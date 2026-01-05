@@ -1,0 +1,223 @@
+# 基礎設施規範
+
+> **套用範圍**: 部署和運維相關
+
+## Docker Compose 配置
+
+### 文件位置
+- `docker-compose-full.yml`
+
+### 服務定義
+
+#### SRS 服務
+- 鏡像：`ossrs/srs:5`
+- 端口：1935（RTMP）、8080（HTTP）、1985（API）
+- 配置：掛載 `srs/conf/srs.conf`
+- 日誌：掛載 `srs/logs`
+- 健康檢查：`/api/v1/versions`
+
+#### Backend 服務
+- 構建：從 `backend/Dockerfile`
+- 端口：3000
+- 依賴：SRS 服務
+- 健康檢查：`/health`
+
+#### 網絡
+- 類型：bridge
+- 名稱：livekit-network
+
+## 啟動腳本
+
+### check-services.sh
+**功能**：檢查並自動啟動服務
+
+**檢查項**：
+1. SRS 是否運行（檢查 1985 端口）
+2. Backend 是否運行（檢查 3000 端口）
+
+**行為**：
+- 服務未運行則自動啟動
+- 等待服務就緒
+- 輸出服務狀態
+
+## VS Code 配置
+
+### launch.json
+**配置項**：
+1. Go Backend：調試後端
+2. Flutter App：調試前端
+3. Full Stack：同時啟動前後端
+
+**預啟動任務**：
+- 檢查服務狀態
+- 自動啟動缺失的服務
+
+### tasks.json
+**任務列表**：
+1. `check-services`：檢查服務
+2. `start-srs`：啟動 SRS
+3. `start-backend`：啟動後端
+
+### settings.json
+**配置項**：
+1. Go 相關配置
+   - GOPATH 設置
+   - 格式化工具：goimports
+   - Lint 工具：golangci-lint
+   - 保存時自動格式化
+
+2. Flutter/Dart 配置
+   - Flutter SDK 路徑
+   - 代碼行長度：100
+   - 保存時自動格式化
+   - Tab 補全
+
+3. 文件關聯
+   - `.mdc` 識別為 markdown
+
+4. 排除文件
+   - 構建產物
+   - 依賴目錄
+   - 緩存文件
+
+## 部署流程
+
+### 開發環境
+1. 本地啟動各服務
+2. 使用 VS Code 調試
+3. 熱重載開發
+
+### 生產環境
+1. 使用 Docker Compose
+2. 配置環境變量
+3. 設置反向代理
+4. 啟用日誌收集
+
+## 監控和日誌
+
+### SRS 日誌
+- 位置：`srs/logs/`
+- 級別：可配置
+- 查看：`docker-compose logs -f srs`
+
+### Backend 日誌
+- 輸出：標準輸出
+- 格式：`[標籤] 描述`
+- 查看：`docker-compose logs -f backend`
+
+### Flutter 日誌
+- 開發：控制台輸出
+- 生產：日誌收集服務
+
+## 健康檢查
+
+### SRS
+```bash
+curl http://localhost:1985/api/v1/versions
+```
+
+### Backend
+```bash
+curl http://localhost:3000/health
+```
+
+### 在線流
+```bash
+curl http://localhost:1985/api/v1/streams/
+```
+
+## 端口分配
+
+| 服務 | 端口 | 用途 |
+|-----|------|------|
+| SRS RTMP | 1935 | 推流 |
+| SRS HTTP | 8080 | HLS/FLV 播放 |
+| SRS API | 1985 | 管理 API |
+| Backend | 3000 | REST API + WebSocket |
+
+## 安全配置
+
+### 防火牆
+- 開放必要端口
+- 限制訪問來源
+- 啟用 IP 白名單
+
+### HTTPS
+- 生產環境必須使用 HTTPS
+- 使用 Let's Encrypt 證書
+- 配置自動續期
+
+### 認證
+- API 使用 token 認證
+- SRS 推流鑑權
+- WebSocket 驗證
+
+## 備份策略
+
+### 配置文件
+- 版本控制管理
+- 定期備份
+
+### 日誌
+- 定期歸檔
+- 保留期限：30 天
+
+### 數據
+- 當前使用內存存儲（無需備份）
+- 未來使用數據庫時需要備份策略
+
+## 擴展方案
+
+### 水平擴展
+1. 使用負載均衡
+2. 共享存儲（Redis/PostgreSQL）
+3. SRS 集群部署
+
+### CDN 集成
+1. SRS 轉推到 CDN
+2. 用戶從 CDN 拉流
+3. 降低源站壓力
+
+### 性能優化
+1. 啟用緩存
+2. 數據庫連接池
+3. 優化查詢
+
+## 故障處理
+
+### SRS 無法啟動
+- 檢查端口占用
+- 檢查配置文件
+- 查看日誌定位問題
+
+### Backend 無法連接
+- 檢查網絡配置
+- 檢查 SRS 是否運行
+- 查看錯誤日誌
+
+### 推流失敗
+- 檢查 RTMP 地址
+- 檢查 stream_key
+- 查看 SRS 回調日誌
+
+### 播放失敗
+- 檢查流是否在線
+- 檢查播放地址
+- 測試網絡連接
+
+## 維護建議
+
+1. **定期檢查**
+   - 服務運行狀態
+   - 日誌大小
+   - 磁盤空間
+
+2. **性能監控**
+   - CPU 使用率
+   - 內存使用率
+   - 網絡流量
+
+3. **安全更新**
+   - 定期更新依賴
+   - 修復安全漏洞
+   - 測試後部署

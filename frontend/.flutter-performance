@@ -1,0 +1,14 @@
+# Flutter 性能優化配置
+
+# 啟用增量編譯
+incremental=true
+
+# 啟用快取
+cache=true
+
+# 減少並行任務（降低 CPU 使用）
+max-workers=4
+
+# 跳過不必要的檢查
+skip-pub-get=false
+skip-build-script-check=true

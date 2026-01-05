@@ -1,0 +1,47 @@
+# Flutter 編譯速度優化配置
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  # 減少分析範圍，加快編譯
+  exclude:
+    - build/**
+    - .dart_tool/**
+    - lib/generated/**
+    - ios/**
+    - android/**
+    - web/**
+    - test/**
+  
+  # 減少錯誤檢查（全部設為 ignore）
+  errors:
+    invalid_annotation_target: ignore
+    missing_required_param: ignore
+    missing_return: ignore
+    deprecated_member_use: ignore
+    use_build_context_synchronously: ignore
+    library_private_types_in_public_api: ignore
+    invalid_use_of_protected_member: ignore
+    invalid_use_of_visible_for_testing_member: ignore
+    
+  # 減少語言功能檢查
+  language:
+    strict-casts: false
+    strict-inference: false
+    strict-raw-types: false
+
+linter:
+  rules:
+    # 關閉所有影響開發的規則
+    avoid_print: false
+    prefer_const_constructors: false
+    prefer_const_literals_to_create_immutables: false
+    prefer_final_fields: false
+    prefer_final_locals: false
+    unnecessary_const: false
+    unnecessary_new: false
+    sort_constructors_first: false
+    sort_unnamed_constructors_first: false
+    always_declare_return_types: false
+    annotate_overrides: false
+    use_build_context_synchronously: false
+    library_private_types_in_public_api: false

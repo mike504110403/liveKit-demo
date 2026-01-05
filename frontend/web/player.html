@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+        }
+        
+        #video-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff6b6b;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="video-container">
+        <video id="video" controls playsinline></video>
+        <div id="loading">
+            <div class="spinner"></div>
+            <div>載入中...</div>
+        </div>
+        <div id="error"></div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const loading = document.getElementById('loading');
+        const errorDiv = document.getElementById('error');
+        let hls = null;
+
+        // 從 URL 參數獲取播放地址
+        function getStreamUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('url');
+        }
+
+        function showLoading(show) {
+            loading.style.display = show ? 'block' : 'none';
+        }
+
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            showLoading(false);
+        }
+
+        function initPlayer() {
+            const streamUrl = getStreamUrl();
+            
+            if (!streamUrl) {
+                showError('❌ 未提供播放地址');
+                return;
+            }
+
+            console.log('🎬 [HLS Player] 初始化播放器');
+            console.log('📺 [HLS Player] 播放地址:', streamUrl);
+
+            if (Hls.isSupported()) {
+                console.log('✅ [HLS Player] 瀏覽器支持 HLS.js');
+                
+                hls = new Hls({
+                    debug: true,
+                    enableWorker: false,            // 關閉 Worker，簡化調試
+                    autoStartLoad: true,            // 自動開始載入
+                    startPosition: -1,              // 從直播點開始
+                });
+
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    console.log('✅ [HLS Player] Manifest 解析成功');
+                    console.log('📊 [HLS Player] 等級數量:', hls.levels.length);
+                    showLoading(false);
+                    
+                    // 靜音後自動播放（繞過瀏覽器限制）
+                    video.muted = true;
+                    video.play().then(() => {
+                        console.log('▶️  [HLS Player] 播放開始（靜音）');
+                        // 1秒後嘗試取消靜音
+                        setTimeout(() => {
+                            video.muted = false;
+                            console.log('🔊 [HLS Player] 已取消靜音');
+                        }, 1000);
+                    }).catch(e => {
+                        console.error('❌ [HLS Player] 播放失敗:', e);
+                        showError('❌ 播放失敗，請點擊畫面手動播放');
+                    });
+                });
+
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('❌ [HLS Player] 錯誤:', data);
+                    
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.error('❌ [HLS Player] 網絡錯誤，嘗試恢復...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.error('❌ [HLS Player] 媒體錯誤，嘗試恢復...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                console.error('❌ [HLS Player] 無法恢復的錯誤');
+                                showError('❌ 播放失敗: ' + data.type);
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
+
+                // 監聽播放事件
+                video.addEventListener('playing', () => {
+                    console.log('▶️  [HLS Player] 開始播放');
+                    console.log('📊 [HLS Player] currentTime:', video.currentTime);
+                    showLoading(false);
+                });
+
+                video.addEventListener('waiting', () => {
+                    console.log('⏳ [HLS Player] 緩衝中...');
+                });
+
+                video.addEventListener('timeupdate', () => {
+                    // 每秒輸出一次（避免過多日誌）
+                    if (Math.floor(video.currentTime) % 5 === 0) {
+                        console.log('⏱️  [HLS Player] 播放進度:', video.currentTime.toFixed(2), '秒');
+                    }
+                });
+
+                video.addEventListener('stalled', () => {
+                    console.warn('⚠️  [HLS Player] 播放停滯');
+                });
+
+                video.addEventListener('error', (e) => {
+                    console.error('❌ [HLS Player] Video 元素錯誤:', e);
+                    showError('❌ 視頻載入失敗');
+                });
+
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                console.log('✅ [HLS Player] 瀏覽器原生支持 HLS');
+                video.src = streamUrl;
+                
+                video.addEventListener('loadedmetadata', function() {
+                    console.log('✅ [HLS Player] 元數據載入完成');
+                    showLoading(false);
+                    video.play().catch(e => {
+                        console.warn('⚠️  [HLS Player] 自動播放失敗:', e.message);
+                    });
+                });
+
+                video.addEventListener('error', (e) => {
+                    console.error('❌ [HLS Player] 播放失敗:', e);
+                    showError('❌ 播放失敗');
+                });
+            } else {
+                showError('❌ 瀏覽器不支持 HLS 播放');
+            }
+        }
+
+        // 清理函數
+        window.addEventListener('beforeunload', () => {
+            if (hls) {
+                hls.destroy();
+            }
+        });
+
+        // 初始化
+        initPlayer();
+    </script>
+</body>
+</html>
+

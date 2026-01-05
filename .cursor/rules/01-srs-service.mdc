@@ -1,0 +1,142 @@
+# SRS 服務規範
+
+> **套用範圍**: `srs/` 目錄
+
+## 配置文件
+
+### 位置
+- `srs/conf/srs.conf`
+- 啟動腳本：`srs/start.sh`
+
+## 核心配置項
+
+### 1. RTMP 推流
+- 端口：1935
+- 路徑：`rtmp://localhost:1935/live/{stream_key}`
+- 支持：H.264 視頻 + AAC 音頻
+
+### 2. HLS 播放
+- 端口：8080
+- 路徑：`http://localhost:8080/{stream_key}.m3u8`
+- 切片長度：可配置（默認 10 秒）
+- 延遲：較高（10-30 秒）
+
+### 3. HTTP-FLV 播放
+- 端口：8080
+- 路徑：`http://localhost:8080/{stream_key}.flv`
+- 延遲：低（2-5 秒）
+
+### 4. HTTP API
+- 端口：1985
+- 查看版本：`GET /api/v1/versions`
+- 查看在線流：`GET /api/v1/streams/`
+- 查看統計：`GET /api/v1/summaries`
+
+### 5. HTTP 回調
+所有回調發送到：`http://localhost:3000/srs`
+
+**回調事件**：
+- `on_publish`: 開始推流
+- `on_unpublish`: 停止推流
+- `on_play`: 開始播放
+- `on_stop`: 停止播放
+- `on_dvr`: 錄製完成
+
+**回調格式**：
+- 方法：POST
+- Content-Type：application/json
+- 必須返回：`{"code": 0}` 表示成功
+
+## 配置規範
+
+### 必須配置項
+1. `listen`: RTMP 監聽端口（1935）
+2. `http_server`: HTTP 服務端口（8080）
+3. `http_api`: API 端口（1985）
+4. `vhost`: 虛擬主機配置
+   - `hls`: HLS 配置
+   - `http_remux`: HTTP-FLV 配置
+   - `http_hooks`: 回調配置
+
+### 可選配置項
+1. **轉碼**：
+   - 多碼率輸出
+   - 視頻分辨率調整
+   
+2. **錄製**：
+   - DVR 功能
+   - 錄製格式：FLV
+
+3. **轉推**：
+   - 轉推到 CDN
+   - 多路轉推
+
+4. **安全**：
+   - IP 白名單/黑名單
+   - Refer 防盜鏈
+
+## 運行和調試
+
+### 啟動
+```bash
+cd srs
+./start.sh
+```
+
+### 檢查狀態
+```bash
+# 檢查是否運行
+curl http://localhost:1985/api/v1/versions
+
+# 查看在線流
+curl http://localhost:1985/api/v1/streams/
+
+# 查看服務器統計
+curl http://localhost:1985/api/v1/summaries
+```
+
+### 日誌
+- 位置：`srs/logs/`
+- 日誌級別可在配置中調整
+
+### 測試推流
+```bash
+# 使用 FFmpeg 測試
+ffmpeg -re -i test.mp4 -c copy -f flv rtmp://localhost:1935/live/test_stream
+
+# 使用 OBS
+# 服務器：rtmp://localhost:1935/live
+# 串流金鑰：stream_key
+```
+
+### 測試播放
+```bash
+# HLS
+vlc http://localhost:8080/test_stream.m3u8
+
+# HTTP-FLV
+vlc http://localhost:8080/test_stream.flv
+```
+
+## 注意事項
+
+### 回調處理
+1. 所有回調必須快速響應（< 100ms）
+2. 返回 `{"code": 0}` 表示允許，非 0 表示拒絕
+3. 回調失敗會導致推流/播放被拒絕
+4. 建議異步處理業務邏輯
+
+### 性能優化
+1. HLS 切片長度影響延遲和穩定性
+2. GOP 設置影響首屏加載速度
+3. 碼率設置要考慮網絡帶寬
+
+### 安全考慮
+1. 生產環境必須配置推流鑑權
+2. 限制併發連接數
+3. 啟用 IP 白名單
+
+### 擴展性
+1. 支持集群部署（Origin-Edge 架構）
+2. 可對接 CDN 分發
+3. 支持轉推到第三方平台

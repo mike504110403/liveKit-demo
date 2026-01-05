@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # SRS 直播服務器
+  srs:
+    image: ossrs/srs:5
+    container_name: srs
+    ports:
+      - "1935:1935"   # RTMP
+      - "8080:8080"   # HTTP-FLV, HLS
+      - "1985:1985"   # HTTP API
+    volumes:
+      - ./srs/conf/srs.conf:/usr/local/srs/conf/srs.conf
+      - ./srs/logs:/usr/local/srs/objs/logs
+    command: ./objs/srs -c conf/srs.conf
+    restart: unless-stopped
+    networks:
+      - livekit-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1985/api/v1/versions"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Go 後端服務
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: api
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - GIN_MODE=release
+    depends_on:
+      - srs
+    restart: unless-stopped
+    networks:
+      - livekit-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  livekit-network:
+    driver: bridge
+
+volumes:
+  srs-logs:
+

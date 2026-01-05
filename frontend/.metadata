@@ -1,0 +1,13 @@
+# Flutter 編譯優化元數據
+version:
+  revision: stable
+  channel: stable
+
+project_type: app
+
+# 優化編譯速度
+migration:
+  platforms:
+    - platform: root
+      create_revision: stable
+      base_revision: stable

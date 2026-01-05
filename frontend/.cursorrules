@@ -1,0 +1,785 @@
+# Frontend 前端 - React + TypeScript 開發規範
+
+> **套用範圍**: 僅適用於 `frontend/` 目錄下的所有前端代碼
+
+## 專案結構
+
+```
+frontend/
+├── public/                 # 靜態資源
+│   ├── favicon.ico
+│   └── logo.png
+├── src/
+│   ├── components/        # 可複用組件
+│   │   ├── ui/           # shadcn/ui 基礎組件
+│   │   │   ├── Button.tsx
+│   │   │   ├── Input.tsx
+│   │   │   └── Card.tsx
+│   │   ├── room/         # 直播間相關組件
+│   │   │   ├── VideoGrid.tsx        # 視頻網格布局
+│   │   │   ├── ParticipantList.tsx  # 參與者列表
+│   │   │   ├── MediaControls.tsx    # 音視頻控制按鈕
+│   │   │   └── RoomInfo.tsx         # 房間信息顯示
+│   │   └── common/       # 通用組件
+│   │       ├── Header.tsx
+│   │       ├── Loading.tsx
+│   │       └── ErrorMessage.tsx
+│   ├── pages/            # 頁面組件
+│   │   ├── Home.tsx         # 首頁（房間列表）
+│   │   ├── CreateRoom.tsx   # 創建直播間
+│   │   ├── JoinRoom.tsx     # 加入直播間
+│   │   └── Room.tsx         # 直播間頁面
+│   ├── hooks/            # 自定義 Hooks
+│   │   ├── useLiveKit.ts    # LiveKit 相關
+│   │   ├── useRoom.ts       # 房間管理
+│   │   └── useMediaDevices.ts # 媒體設備管理
+│   ├── services/         # API 服務
+│   │   └── api.ts          # API 調用封裝
+│   ├── stores/           # Zustand stores
+│   │   └── userStore.ts    # 用戶狀態管理
+│   ├── types/            # TypeScript 類型定義
+│   │   └── index.ts
+│   ├── utils/            # 工具函數
+│   │   ├── helpers.ts
+│   │   └── constants.ts
+│   ├── styles/           # 樣式文件
+│   │   └── globals.css
+│   ├── App.tsx           # 主應用組件
+│   ├── main.tsx          # 入口文件
+│   └── vite-env.d.ts     # Vite 類型聲明
+├── index.html
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── tailwind.config.js
+├── postcss.config.js
+└── .cursorrules          # 本文件
+```
+
+## 技術棧
+
+### 核心框架
+- **React**: 18+
+- **TypeScript**: 5+
+- **建置工具**: Vite
+- **Node.js**: 18+
+
+### UI 和樣式
+- **CSS 框架**: TailwindCSS 3+
+- **組件庫**: shadcn/ui
+- **圖標**: lucide-react
+
+### 狀態管理
+- **全局狀態**: Zustand
+- **表單狀態**: React Hook Form + Zod
+
+### LiveKit 整合
+- **SDK**: @livekit/components-react
+- **Core**: @livekit/react-core
+
+### HTTP 客戶端
+- **Axios**: axios
+
+### 路由
+- **React Router**: react-router-dom v6
+
+### 開發工具
+- **ESLint**: 代碼檢查
+- **Prettier**: 代碼格式化
+- **TypeScript**: 類型檢查
+
+## 代碼規範
+
+### 1. 檔案命名
+
+#### 組件文件
+- 使用 PascalCase：`CreateRoom.tsx`, `VideoGrid.tsx`
+- 一個文件一個主要組件
+
+#### 工具和服務
+- 使用 camelCase：`api.ts`, `helpers.ts`
+- Hooks：`use` 開頭，如 `useRoom.ts`
+
+#### 樣式文件
+- 使用 kebab-case：`button.module.css`
+- 全局樣式：`globals.css`
+
+### 2. 組件規範
+
+#### 函數式組件
+```typescript
+// ✓ 正確：使用箭頭函數 + 具名導出
+export const CreateRoom: React.FC = () => {
+  const [roomName, setRoomName] = useState('');
+  
+  return (
+    <div className="container">
+      {/* 組件內容 */}
+    </div>
+  );
+};
+
+// ✗ 避免：默認導出（除非是頁面組件）
+export default function CreateRoom() { }
+```
+
+#### 組件 Props 類型定義
+```typescript
+interface VideoGridProps {
+  participants: Participant[];
+  layout?: 'grid' | 'sidebar';
+  onParticipantClick?: (participant: Participant) => void;
+}
+
+export const VideoGrid: React.FC<VideoGridProps> = ({ 
+  participants, 
+  layout = 'grid',
+  onParticipantClick 
+}) => {
+  // 組件邏輯
+};
+```
+
+#### 組件結構順序
+```typescript
+export const MyComponent: React.FC<Props> = ({ prop1, prop2 }) => {
+  // 1. Hooks
+  const [state, setState] = useState();
+  const customHook = useCustomHook();
+  
+  // 2. 副作用
+  useEffect(() => {
+    // 副作用邏輯
+  }, []);
+  
+  // 3. 事件處理函數
+  const handleClick = () => {
+    // 處理邏輯
+  };
+  
+  // 4. 渲染條件
+  if (loading) return <Loading />;
+  if (error) return <Error />;
+  
+  // 5. 返回 JSX
+  return (
+    <div>
+      {/* JSX */}
+    </div>
+  );
+};
+```
+
+### 3. TypeScript 規範
+
+#### 類型定義
+```typescript
+// types/index.ts
+
+// 使用 interface 定義對象類型
+export interface Room {
+  sid: string;
+  name: string;
+  numParticipants: number;
+  creationTime: number;
+}
+
+// 使用 type 定義聯合類型或工具類型
+export type RoomLayout = 'grid' | 'sidebar' | 'spotlight';
+export type ApiResponse<T> = {
+  data: T;
+  error?: string;
+};
+
+// API 請求/響應類型
+export interface CreateRoomRequest {
+  name: string;
+  emptyTimeout?: number;
+  maxParticipants?: number;
+}
+
+export interface CreateRoomResponse {
+  roomId: string;
+  roomName: string;
+}
+```
+
+#### 避免使用 any
+```typescript
+// ✗ 避免
+const handleData = (data: any) => { };
+
+// ✓ 正確：使用具體類型
+const handleData = (data: Room) => { };
+
+// ✓ 正確：使用泛型
+const handleData = <T,>(data: T) => { };
+
+// ✓ 正確：使用 unknown（當類型真的未知時）
+const handleData = (data: unknown) => {
+  if (typeof data === 'string') {
+    // 類型收窄
+  }
+};
+```
+
+### 4. Hooks 使用規範
+
+#### 自定義 Hook
+```typescript
+// hooks/useRoom.ts
+export const useRoom = (roomName: string) => {
+  const [room, setRoom] = useState<Room | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    const fetchRoom = async () => {
+      setLoading(true);
+      try {
+        const data = await api.getRoom(roomName);
+        setRoom(data);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchRoom();
+  }, [roomName]);
+  
+  return { room, loading, error };
+};
+```
+
+#### Hooks 使用順序
+```typescript
+// ✓ 正確順序
+const MyComponent = () => {
+  // 1. Context
+  const theme = useContext(ThemeContext);
+  
+  // 2. State
+  const [count, setCount] = useState(0);
+  
+  // 3. Refs
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  // 4. 自定義 Hooks
+  const { room } = useRoom('room-1');
+  
+  // 5. 副作用
+  useEffect(() => { }, []);
+  
+  // 6. 記憶化
+  const memoValue = useMemo(() => { }, []);
+  const callback = useCallback(() => { }, []);
+  
+  return <div />;
+};
+```
+
+### 5. 狀態管理
+
+#### Zustand Store
+```typescript
+// stores/userStore.ts
+import { create } from 'zustand';
+
+interface UserState {
+  identity: string;
+  name: string;
+  setUser: (identity: string, name: string) => void;
+  clearUser: () => void;
+}
+
+export const useUserStore = create<UserState>((set) => ({
+  identity: '',
+  name: '',
+  setUser: (identity, name) => set({ identity, name }),
+  clearUser: () => set({ identity: '', name: '' }),
+}));
+```
+
+#### 使用 Store
+```typescript
+// 在組件中使用
+const { identity, name, setUser } = useUserStore();
+
+// 只訂閱需要的狀態（性能優化）
+const identity = useUserStore((state) => state.identity);
+```
+
+### 6. API 調用規範
+
+#### API 服務封裝
+```typescript
+// services/api.ts
+import axios, { AxiosError } from 'axios';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// 響應攔截器
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError) => {
+    const message = error.response?.data?.error || error.message;
+    return Promise.reject(new Error(message));
+  }
+);
+
+// API 方法
+export const api = {
+  // 獲取房間列表
+  getRooms: async (): Promise<Room[]> => {
+    const { data } = await apiClient.get<{ rooms: Room[] }>('/api/v1/rooms');
+    return data.rooms;
+  },
+  
+  // 創建房間
+  createRoom: async (request: CreateRoomRequest): Promise<CreateRoomResponse> => {
+    const { data } = await apiClient.post('/api/v1/rooms', request);
+    return data;
+  },
+  
+  // 生成令牌
+  generateToken: async (request: GenerateTokenRequest): Promise<GenerateTokenResponse> => {
+    const { data } = await apiClient.post('/api/v1/token', request);
+    return data;
+  },
+};
+```
+
+#### 組件中使用 API
+```typescript
+const CreateRoom: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const handleSubmit = async (roomName: string) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await api.createRoom({ name: roomName });
+      // 處理成功
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '創建失敗');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  return (
+    <div>
+      {error && <ErrorMessage message={error} />}
+      {/* 表單內容 */}
+    </div>
+  );
+};
+```
+
+### 7. 樣式規範
+
+#### TailwindCSS 使用
+```typescript
+// ✓ 正確：使用 Tailwind utility classes
+<div className="flex items-center justify-between p-4 bg-white rounded-lg shadow-md">
+  <h1 className="text-2xl font-bold text-gray-900">標題</h1>
+  <Button className="bg-blue-500 hover:bg-blue-600 text-white">按鈕</Button>
+</div>
+
+// 條件樣式
+<div className={`
+  p-4 rounded-lg
+  ${isActive ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-900'}
+`}>
+  內容
+</div>
+
+// 使用 clsx 或 cn 處理複雜條件
+import { cn } from '@/utils/cn';
+
+<div className={cn(
+  'p-4 rounded-lg',
+  isActive && 'bg-blue-500',
+  isDisabled && 'opacity-50 cursor-not-allowed'
+)}>
+  內容
+</div>
+```
+
+#### 響應式設計
+```typescript
+<div className="
+  flex flex-col          /* 移動端：垂直排列 */
+  md:flex-row           /* 平板以上：水平排列 */
+  gap-4                 /* 間距 */
+  p-4 md:p-6 lg:p-8     /* 響應式內邊距 */
+">
+  {/* 內容 */}
+</div>
+```
+
+### 8. 表單處理
+
+#### React Hook Form + Zod
+```typescript
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+// 定義驗證 schema
+const createRoomSchema = z.object({
+  roomName: z.string()
+    .min(1, '房間名稱不能為空')
+    .max(50, '房間名稱不能超過50個字符'),
+  displayName: z.string()
+    .min(1, '顯示名稱不能為空'),
+  maxParticipants: z.number()
+    .min(1)
+    .max(100)
+    .optional(),
+});
+
+type CreateRoomFormData = z.infer<typeof createRoomSchema>;
+
+// 在組件中使用
+export const CreateRoomForm: React.FC = () => {
+  const { register, handleSubmit, formState: { errors } } = useForm<CreateRoomFormData>({
+    resolver: zodResolver(createRoomSchema),
+  });
+  
+  const onSubmit = async (data: CreateRoomFormData) => {
+    // 處理提交
+  };
+  
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input {...register('roomName')} />
+      {errors.roomName && <span>{errors.roomName.message}</span>}
+      
+      <button type="submit">提交</button>
+    </form>
+  );
+};
+```
+
+## LiveKit 整合規範
+
+### 1. LiveKit 連接
+```typescript
+// hooks/useLiveKit.ts
+import { useRoom } from '@livekit/components-react';
+
+export const useLiveKitRoom = (token: string, serverUrl: string) => {
+  const { connect, disconnect, room, participants } = useRoom();
+  
+  useEffect(() => {
+    if (token && serverUrl) {
+      connect(serverUrl, token);
+    }
+    
+    return () => {
+      disconnect();
+    };
+  }, [token, serverUrl, connect, disconnect]);
+  
+  return { room, participants };
+};
+```
+
+### 2. 視頻組件
+```typescript
+import { VideoTrack, AudioTrack } from '@livekit/components-react';
+import type { Participant } from 'livekit-client';
+
+interface ParticipantVideoProps {
+  participant: Participant;
+}
+
+export const ParticipantVideo: React.FC<ParticipantVideoProps> = ({ participant }) => {
+  return (
+    <div className="relative aspect-video bg-gray-900 rounded-lg overflow-hidden">
+      <VideoTrack 
+        participant={participant} 
+        className="w-full h-full object-cover"
+      />
+      <AudioTrack participant={participant} />
+      
+      <div className="absolute bottom-2 left-2 text-white bg-black/50 px-2 py-1 rounded">
+        {participant.name || participant.identity}
+      </div>
+    </div>
+  );
+};
+```
+
+### 3. 媒體控制
+```typescript
+import { useLocalParticipant } from '@livekit/components-react';
+
+export const MediaControls: React.FC = () => {
+  const { localParticipant } = useLocalParticipant();
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
+  
+  const toggleMute = async () => {
+    if (localParticipant) {
+      await localParticipant.setMicrophoneEnabled(isMuted);
+      setIsMuted(!isMuted);
+    }
+  };
+  
+  const toggleCamera = async () => {
+    if (localParticipant) {
+      await localParticipant.setCameraEnabled(isCameraOff);
+      setIsCameraOff(!isCameraOff);
+    }
+  };
+  
+  return (
+    <div className="flex gap-4">
+      <button onClick={toggleMute}>
+        {isMuted ? '取消靜音' : '靜音'}
+      </button>
+      <button onClick={toggleCamera}>
+        {isCameraOff ? '開啟攝像頭' : '關閉攝像頭'}
+      </button>
+    </div>
+  );
+};
+```
+
+## 頁面組件規範
+
+### 1. 首頁（房間列表）
+```typescript
+// pages/Home.tsx
+export const Home: React.FC = () => {
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        const data = await api.getRooms();
+        setRooms(data);
+      } catch (error) {
+        // 錯誤處理
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchRooms();
+    // 設置輪詢
+    const interval = setInterval(fetchRooms, 5000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  return (
+    <div className="container mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-6">直播間列表</h1>
+      {/* 房間列表 */}
+    </div>
+  );
+};
+```
+
+### 2. 直播間頁面
+```typescript
+// pages/Room.tsx
+export const Room: React.FC = () => {
+  const { roomName } = useParams();
+  const { token, serverUrl } = useRoomToken(roomName);
+  const { room, participants } = useLiveKitRoom(token, serverUrl);
+  
+  return (
+    <LiveKitRoom serverUrl={serverUrl} token={token}>
+      <div className="h-screen flex flex-col">
+        <VideoGrid participants={participants} />
+        <MediaControls />
+      </div>
+    </LiveKitRoom>
+  );
+};
+```
+
+## 路由配置
+
+```typescript
+// App.tsx
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+export const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/create" element={<CreateRoom />} />
+        <Route path="/join" element={<JoinRoom />} />
+        <Route path="/room/:roomName" element={<Room />} />
+      </Routes>
+    </BrowserRouter>
+  );
+};
+```
+
+## 環境變數
+
+### 配置文件 (.env)
+```env
+VITE_API_BASE_URL=http://localhost:8080
+VITE_LIVEKIT_WS_URL=ws://localhost:7880
+```
+
+### 使用環境變數
+```typescript
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const LIVEKIT_WS_URL = import.meta.env.VITE_LIVEKIT_WS_URL;
+```
+
+## 錯誤處理
+
+### 錯誤邊界
+```typescript
+import { Component, ReactNode } from 'react';
+
+interface Props {
+  children: ReactNode;
+}
+
+interface State {
+  hasError: boolean;
+}
+
+export class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <div>發生錯誤</div>;
+    }
+    
+    return this.props.children;
+  }
+}
+```
+
+## 性能優化
+
+### 1. React.memo
+```typescript
+export const ExpensiveComponent = React.memo<Props>(({ data }) => {
+  // 組件邏輯
+}, (prevProps, nextProps) => {
+  // 自定義比較函數
+  return prevProps.data === nextProps.data;
+});
+```
+
+### 2. useMemo 和 useCallback
+```typescript
+const memoizedValue = useMemo(() => {
+  return expensiveCalculation(data);
+}, [data]);
+
+const memoizedCallback = useCallback(() => {
+  doSomething(a, b);
+}, [a, b]);
+```
+
+### 3. 懶加載
+```typescript
+import { lazy, Suspense } from 'react';
+
+const Room = lazy(() => import('./pages/Room'));
+
+<Suspense fallback={<Loading />}>
+  <Room />
+</Suspense>
+```
+
+## 測試規範
+
+### 組件測試
+```typescript
+import { render, screen } from '@testing-library/react';
+import { CreateRoom } from './CreateRoom';
+
+test('renders create room button', () => {
+  render(<CreateRoom />);
+  const button = screen.getByText(/創建房間/i);
+  expect(button).toBeInTheDocument();
+});
+```
+
+## 開發工作流
+
+```bash
+# 安裝依賴
+npm install
+
+# 開發模式
+npm run dev
+
+# 類型檢查
+npm run type-check
+
+# Lint 檢查
+npm run lint
+
+# 建置
+npm run build
+
+# 預覽建置結果
+npm run preview
+```
+
+## 常見問題
+
+### Q: 如何添加新頁面？
+A: 
+1. 在 `src/pages/` 創建新組件
+2. 在 `App.tsx` 添加路由
+3. 根據需要添加導航鏈接
+
+### Q: 如何調試 LiveKit 連接問題？
+A: 
+1. 檢查 token 是否有效
+2. 確認 WebSocket URL 正確
+3. 檢查瀏覽器控制台錯誤
+4. 確認媒體設備權限
+
+### Q: 如何優化視頻性能？
+A: 
+1. 使用適當的視頻質量設置
+2. 限制同時顯示的視頻數量
+3. 使用虛擬滾動處理大量參與者
+4. 實現網絡自適應
+
+## 注意事項
+
+1. **TypeScript 嚴格模式**：始終啟用，不要使用 `any`
+2. **組件粒度**：保持組件小而專注
+3. **性能**：使用 React DevTools Profiler 檢查性能
+4. **可訪問性**：添加適當的 ARIA 標籤
+5. **媒體權限**：優雅處理用戶拒絕權限的情況
+

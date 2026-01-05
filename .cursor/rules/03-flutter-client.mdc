@@ -1,0 +1,265 @@
+# Flutter 客戶端規範
+
+> **套用範圍**: `frontend/` 目錄
+
+## 專案結構
+
+```
+frontend/lib/
+├── config/             # 配置管理
+├── models/             # 數據模型
+├── services/           # API 和 WebSocket 服務
+├── screens/            # UI 頁面
+├── widgets/            # 可復用組件
+├── utils/              # 工具函數
+└── main.dart           # 入口
+```
+
+## 模塊職責
+
+### config/
+- 統一管理所有配置
+- API 地址、WebSocket 地址
+- SRS 地址（RTMP/HLS/FLV）
+- 功能開關（ZEGO SDK、美顏等）
+- 環境變量支持
+
+### models/
+- 定義數據結構
+- 實現 JSON 序列化/反序列化
+- 對應後端 API 數據格式
+
+### services/
+- 封裝 API 調用
+- 封裝 WebSocket 通信
+- 封裝推流服務
+- 處理網絡錯誤
+
+### screens/
+- UI 頁面實現
+- 頁面狀態管理
+- 調用 services 層
+
+### widgets/
+- 可復用 UI 組件
+- 無業務邏輯
+- 參數化配置
+
+### utils/
+- 錯誤處理
+- 日誌工具
+- 通用函數
+
+## 開發規範
+
+### 配置管理
+1. 所有配置集中在 `config/app_config.dart`
+2. 使用 `String.fromEnvironment` 支持環境變量
+3. 提供合理的默認值
+4. 區分開發/生產環境
+
+### API 調用
+1. 統一使用 `ApiService` 封裝
+2. 處理所有 HTTP 錯誤
+3. 返回明確的錯誤信息
+4. 支持超時設置
+
+### WebSocket 使用
+1. 統一使用 `WebSocketService` 封裝
+2. 自動重連機制
+3. 心跳保持連接
+4. 斷開時清理資源
+
+### 錯誤處理
+1. 使用 `ErrorHandler` 統一處理
+2. 顯示友好的錯誤提示
+3. 記錄錯誤日誌
+4. 區分網絡錯誤和業務錯誤
+
+### 狀態管理
+1. 簡單狀態用 `setState`
+2. 複雜狀態用 `Provider`
+3. 避免過度狀態提升
+4. 及時釋放資源
+
+## UI 規範
+
+### 頁面結構
+1. `login_screen.dart`: 登入頁
+2. `home_screen.dart`: 直播間列表
+3. `stream_screen.dart`: 推流頁（主播）
+4. `player_screen.dart`: 播放頁（觀眾）
+
+### 組件規範
+1. `chat_widget.dart`: 聊天組件
+2. `loading_widget.dart`: 加載狀態
+3. `error_widget.dart`: 錯誤狀態
+4. `empty_widget.dart`: 空狀態
+
+### 樣式規範
+1. 使用 Material Design 3
+2. 統一色調和字體
+3. 適配不同屏幕尺寸
+4. 支持深色模式（可選）
+
+## 播放器實現
+
+### HLS 播放
+- 使用 `video_player` 包
+- 延遲較高（10-30 秒）
+- 兼容性好
+- 適合正式直播
+
+### HTTP-FLV 播放
+- 使用 `flutter_vlc_player` 包
+- 延遲較低（2-5 秒）
+- 需要額外配置
+- 適合互動直播
+
+## 推流方案
+
+### 方案 A：App 內推流（已實現）⭐
+- 使用 **ZEGO Express SDK**
+- 支持攝像頭預覽和推流
+- 基礎美顏（磨皮、美白、銳化）
+- 推流控制（切換攝像頭、靜音、美顏）
+- **必須用真機測試**（模擬器效果差）
+- 免費額度：月活 < 10,000 用戶
+
+**配置要求**：
+- 註冊 ZEGO：https://console.zego.im/
+- 獲取 AppID 和 AppSign
+- 填入 `lib/config/app_config.dart`
+
+**功能清單**：
+- ✅ 攝像頭預覽
+- ✅ RTMP 推流到 SRS
+- ✅ 前後攝像頭切換
+- ✅ 麥克風靜音
+- ✅ 攝像頭開關
+- ✅ 基礎美顏
+
+### 方案 B：OBS 推流（備用）
+- 顯示 RTMP 推流地址
+- 用戶使用 OBS 等專業工具推流
+- 適合電腦端直播
+
+## 網絡配置
+
+### Android 模擬器
+```dart
+static const String apiBaseUrl = 'http://10.0.2.2:3000/api';
+static const String wsBaseUrl = 'ws://10.0.2.2:3000';
+```
+
+### iOS 模擬器
+```dart
+static const String apiBaseUrl = 'http://localhost:3000/api';
+static const String wsBaseUrl = 'ws://localhost:3000';
+```
+
+### 真機
+```dart
+// 使用電腦內網 IP
+static const String apiBaseUrl = 'http://192.168.1.100:3000/api';
+static const String wsBaseUrl = 'ws://192.168.1.100:3000';
+```
+
+## 權限配置
+
+### Android
+在 `android/app/src/main/AndroidManifest.xml` 添加：
+```xml
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.CAMERA"/>
+<uses-permission android:name="android.permission.RECORD_AUDIO"/>
+```
+
+### iOS
+在 `ios/Runner/Info.plist` 添加：
+```xml
+<key>NSCameraUsageDescription</key>
+<string>需要使用攝像頭進行直播</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>需要使用麥克風進行直播</string>
+```
+
+## 依賴管理
+
+### 核心依賴
+- `http`: HTTP 請求
+- `provider`: 狀態管理
+- `video_player`: HLS 播放
+- `flutter_vlc_player`: FLV 播放
+- `web_socket_channel`: WebSocket
+- `permission_handler`: 權限管理
+
+### 可選依賴
+- `zego_express_engine`: ZEGO 推流（需註冊）
+- `cached_network_image`: 圖片緩存
+
+## 運行和調試
+
+### 查看可用設備
+```bash
+flutter devices
+```
+
+### 運行
+```bash
+# 自動選擇設備
+flutter run
+
+# 指定設備
+flutter run -d "iPhone 15 Pro"
+flutter run -d chrome
+```
+
+### 熱重載
+- 保存文件自動熱重載
+- 按 `r` 手動熱重載
+- 按 `R` 熱重啟
+- 按 `q` 退出
+
+### 調試
+```bash
+# 查看日誌
+flutter logs
+
+# 性能分析
+flutter run --profile
+
+# 檢查問題
+flutter analyze
+```
+
+## 性能優化
+
+### 列表優化
+1. 使用 `ListView.builder` 懶加載
+2. 緩存列表項高度
+3. 避免重複構建
+
+### 圖片優化
+1. 使用 `cached_network_image`
+2. 設置合適的緩存策略
+3. 壓縮圖片尺寸
+
+### 內存管理
+1. 及時釋放控制器
+2. 取消未完成的請求
+3. 清理 WebSocket 連接
+
+## 注意事項
+
+### 跨平台差異
+1. iOS 和 Android 權限不同
+2. 網絡配置不同（模擬器）
+3. 視頻播放器行為差異
+4. 測試時注意平台特性
+
+### 開發建議
+1. 優先開發 Android（配置簡單）
+2. 使用真機測試推流功能
+3. 日誌記錄關鍵操作
+4. 處理所有異常情況

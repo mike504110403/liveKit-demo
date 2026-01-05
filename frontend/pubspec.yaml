@@ -1,0 +1,44 @@
+name: livekit_demo
+description: A live streaming demo app
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # 網絡請求
+  http: ^1.1.0
+  
+  # 視頻播放（移除不需要的 flutter_vlc_player）
+  video_player: ^2.8.1
+  
+  # WebSocket
+  web_socket_channel: ^2.4.0
+  
+  # 推流（Agora SDK）
+  agora_rtc_engine: ^6.3.2
+  
+  # 環境變數
+  flutter_dotenv: ^5.1.0
+  
+  # 權限管理
+  permission_handler: ^11.1.0
+  
+  # UI
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  # 環境變數文件
+  assets:
+    - .env

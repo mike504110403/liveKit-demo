@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "check-services",
+      "type": "shell",
+      "command": "${workspaceFolder}/.vscode/check-services.sh",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "start-srs",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/srs && ./start.sh",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": [],
+      "isBackground": true
+    },
+    {
+      "label": "start-backend",
+      "type": "shell",
+      "command": "cd ${workspaceFolder}/backend && go run main.go",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": [],
+      "isBackground": true
+    }
+  ]
+}
+

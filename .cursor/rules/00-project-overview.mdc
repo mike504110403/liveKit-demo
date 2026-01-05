@@ -1,0 +1,159 @@
+# 專案概覽
+
+> **套用範圍**: 整個專案
+
+## 專案簡介
+
+基於 SRS 的直播平台 MVP，支持推流、播放、聊天功能。
+
+## 技術棧
+
+### 後端
+- **語言**: Go 1.23+
+- **框架**: Gin
+- **架構**: 模塊化分層（models/store/handlers）
+- **存儲**: 內存存儲（線程安全 Map）
+- **通訊**: HTTP REST API + WebSocket
+
+### 前端
+- **框架**: Flutter 3.x
+- **平台**: iOS / Android / Web
+- **播放器**: video_player (HLS)
+- **推流**: ZEGO Express SDK（App 內推流）+ OBS（備用）
+- **美顏**: ZEGO 基礎美顏（磨皮、美白、銳化）
+- **配置**: 統一配置管理（app_config.dart）
+
+### 直播核心
+- **服務**: SRS 5.0
+- **協議**: RTMP (推流) + HLS/FLV (拉流)
+- **回調**: HTTP Callback
+
+## 專案結構
+
+```
+livekit-demo/
+├── backend/                    # Go 後端
+│   ├── models/                # 數據模型
+│   ├── store/                 # 存儲層（線程安全）
+│   ├── handlers/              # 業務處理器
+│   ├── main.go               # 主程序
+│   └── Dockerfile
+├── frontend/                  # Flutter 客戶端
+│   ├── lib/
+│   │   ├── config/           # 配置管理
+│   │   ├── models/           # 數據模型
+│   │   ├── services/         # API 和 WebSocket 服務
+│   │   ├── screens/          # 頁面
+│   │   ├── widgets/          # 通用組件
+│   │   └── utils/            # 工具函數
+│   ├── android/              # Android 配置
+│   ├── ios/                  # iOS 配置
+│   └── pubspec.yaml
+├── srs/                       # SRS 配置
+│   ├── conf/srs.conf
+│   └── start.sh
+├── .cursor/rules/             # 開發規則
+├── .vscode/                   # VS Code 配置
+├── docker-compose-full.yml
+├── ARCHITECTURE.md
+└── README.md
+```
+
+## 開發流程
+
+### 1. 業務流程
+1. 用戶登入 → 獲取 token
+2. 創建直播間 → 獲取 RTMP 推流地址和 stream_key
+3. 推流（OBS）→ SRS 回調後端 → 更新直播間狀態為 "live"
+4. 觀眾進入直播間 → 獲取 HLS/FLV 播放地址 → 播放
+5. WebSocket 聊天室實時通訊
+6. 停止推流 → SRS 回調後端 → 更新直播間狀態為 "idle"
+
+### 2. 模塊劃分
+- **models**: 純數據結構定義
+- **store**: 數據存儲和訪問（必須線程安全）
+- **handlers**: HTTP 請求處理和業務邏輯
+- **services**: API 封裝和服務調用
+- **screens**: UI 頁面
+- **widgets**: 可復用 UI 組件
+
+### 3. 部署方式
+- **開發**: 本地啟動 SRS + Backend + Flutter
+- **生產**: Docker Compose 一鍵部署
+
+## 開發規範
+
+### 通用規範
+1. 使用統一的錯誤處理機制
+2. 詳細的日誌輸出（包含關鍵操作和錯誤）
+3. 配置集中管理，避免硬編碼
+4. 代碼分層清晰，職責單一
+5. 命名規範：駝峰命名，見名知意
+
+### Git 提交規範
+```
+feat: 新功能
+fix: 修復 bug
+refactor: 重構
+docs: 文檔
+style: 代碼格式
+chore: 構建/工具變動
+```
+
+### 文檔要求
+- README.md: 項目說明和快速開始
+- ARCHITECTURE.md: 系統架構設計
+- 代碼注釋: 複雜邏輯必須注釋
+
+## 開發環境
+
+### 必需工具
+- Go 1.23+
+- Flutter 3.x
+- Docker & Docker Compose
+- Git
+
+### 推薦工具
+- VS Code + Go/Flutter 插件
+- Android Studio（Android 開發）
+- Xcode（iOS 開發，僅 Mac）
+- OBS Studio（推流測試）
+
+### 啟動服務
+```bash
+# 方式 1: Docker Compose
+docker-compose -f docker-compose-full.yml up -d
+
+# 方式 2: 本地開發
+# Terminal 1: SRS
+cd srs && ./start.sh
+
+# Terminal 2: Backend
+cd backend && go run main.go
+
+# Terminal 3: Flutter
+cd frontend && flutter run
+
+# 方式 3: VS Code
+# 按 Fn + F5 自動檢查並啟動服務
+```
+
+## 注意事項
+
+### SRS 回調
+- 所有回調必須返回 `{"code": 0}` 表示成功
+- 回調失敗會導致 SRS 拒絕推流/播放
+
+### 線程安全
+- 所有內存存儲操作必須加鎖
+- 讀操作用 RLock，寫操作用 Lock
+
+### 網絡配置
+- Android 模擬器使用 `10.0.2.2` 訪問宿主機
+- iOS 模擬器使用 `localhost`
+- 真機使用電腦內網 IP（如 `192.168.1.100`）
+
+### 性能優化
+- WebSocket 連接斷開時清理資源
+- 直播間列表定時刷新觀看人數
+- 避免在鎖內執行耗時操作

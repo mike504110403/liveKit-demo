@@ -1,0 +1,208 @@
+# Go 後端服務規範
+
+> **套用範圍**: `backend/` 目錄
+
+## 專案結構
+
+```
+backend/
+├── models/          # 數據模型（純數據結構）
+├── store/           # 存儲層（線程安全操作）
+├── handlers/        # 業務處理器（HTTP 處理）
+├── main.go          # 主程序（路由配置）
+├── go.mod
+└── Dockerfile
+```
+
+## 模塊職責
+
+### models/
+- 定義所有數據結構
+- 包括請求/響應模型
+- 不包含業務邏輯
+- 使用 JSON tag 標註
+
+### store/
+- 封裝所有存儲操作
+- 提供線程安全的接口
+- 使用 sync.RWMutex 保護
+- 讀操作用 RLock，寫操作用 Lock
+
+### handlers/
+- 處理 HTTP 請求
+- 調用 store 層操作數據
+- 返回統一格式的響應
+- 記錄詳細日誌
+
+### main.go
+- 初始化存儲
+- 創建處理器實例
+- 配置路由和中間件
+- 啟動 HTTP 服務器
+
+## API 設計規範
+
+### 路由規則
+- **認證**: `/api/login`
+- **直播間**: `/api/rooms`, `/api/rooms/:id`
+- **SRS 回調**: `/srs/on_publish`, `/srs/on_unpublish`
+- **WebSocket**: `/chat/:room_id`
+- **健康檢查**: `/health`
+
+### 請求格式
+- Content-Type: `application/json`
+- Authorization: 在 Header 中傳遞 token
+
+### 響應格式
+```
+成功: {"key": "value"}
+錯誤: {"error": "錯誤信息"}
+```
+
+### HTTP 狀態碼
+- 200: 成功
+- 400: 請求錯誤
+- 401: 未授權
+- 404: 資源不存在
+- 500: 服務器錯誤
+
+## 開發規範
+
+### 錯誤處理
+1. 所有錯誤必須記錄日誌
+2. 返回友好的錯誤信息
+3. 不暴露內部實現細節
+4. 使用統一的錯誤格式
+
+### 日誌規範
+格式：`[標籤] 描述: 詳細信息`
+
+標籤類別：
+- `[LOGIN]`: 用戶登入
+- `[CREATE_ROOM]`: 創建直播間
+- `[SRS_PUBLISH]`: SRS 推流回調
+- `[SRS_UNPUBLISH]`: SRS 停止推流回調
+- `[ROOM_LIVE]`: 直播間上線
+- `[ROOM_IDLE]`: 直播間下線
+- `[WS_CONNECT]`: WebSocket 連接
+- `[WS_DISCONNECT]`: WebSocket 斷開
+- `[CHAT]`: 聊天消息
+- `[ERROR]`: 錯誤信息
+
+### 線程安全
+1. 所有 store 操作必須加鎖
+2. 避免鎖內調用外部服務
+3. 避免鎖內執行耗時操作
+4. 注意死鎖風險
+
+### SRS 回調處理
+1. 必須返回 `{"code": 0}` 表示成功
+2. 即使處理失敗也返回成功（避免 SRS 重試）
+3. 異步處理業務邏輯
+4. 記錄詳細的回調參數
+
+### WebSocket 處理
+1. 驗證 token 和 room_id
+2. 維護連接列表
+3. 廣播消息到所有連接
+4. 處理連接斷開時清理資源
+5. 防止內存洩漏
+
+## 依賴管理
+
+### 核心依賴
+- `github.com/gin-gonic/gin`: Web 框架
+- `github.com/google/uuid`: UUID 生成
+- `github.com/gorilla/websocket`: WebSocket
+
+### 安裝依賴
+```bash
+go mod init livekit-demo
+go get github.com/gin-gonic/gin
+go get github.com/google/uuid
+go get github.com/gorilla/websocket
+go mod tidy
+```
+
+## 運行和調試
+
+### 開發模式
+```bash
+cd backend
+go run main.go
+```
+
+### 編譯
+```bash
+go build -o server main.go
+```
+
+### 測試
+```bash
+# 健康檢查
+curl http://localhost:3000/health
+
+# 登入
+curl -X POST http://localhost:3000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"nickname":"測試用戶"}'
+
+# 創建直播間
+curl -X POST http://localhost:3000/api/rooms \
+  -H "Content-Type: application/json" \
+  -H "Authorization: <token>" \
+  -d '{"title":"測試直播間"}'
+```
+
+## 部署規範
+
+### Docker 構建
+- 使用多階段構建
+- 基礎鏡像：golang:1.23-alpine
+- 運行鏡像：alpine:latest
+- 暴露端口：3000
+
+### 環境變量
+- `PORT`: 服務端口（默認 3000）
+- `GIN_MODE`: 運行模式（debug/release）
+
+### 健康檢查
+- 端點：`GET /health`
+- 響應：`{"status": "ok"}`
+- 用於 Docker 和負載均衡器
+
+## 性能優化
+
+### 內存管理
+1. 定期清理過期數據
+2. 避免內存洩漏
+3. 合理設置 map 初始容量
+
+### 併發控制
+1. 使用讀寫鎖優化讀多寫少場景
+2. 避免長時間持有鎖
+3. 使用 channel 進行協程通信
+
+### 日誌優化
+1. 避免過度日誌
+2. 使用結構化日誌
+3. 生產環境調整日誌級別
+
+## 注意事項
+
+### 安全
+1. 驗證所有輸入
+2. 防止 SQL 注入（雖然當前使用內存存儲）
+3. 限制請求頻率
+4. CORS 配置要謹慎
+
+### 可擴展性
+1. 保持模塊獨立
+2. 便於切換存儲層（內存 → Redis/PostgreSQL）
+3. 支持水平擴展（需要共享存儲）
+
+### 監控
+1. 記錄關鍵指標
+2. 監控內存使用
+3. 監控 goroutine 數量
+4. 監控 WebSocket 連接數
