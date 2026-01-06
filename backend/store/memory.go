@@ -1,6 +1,7 @@
 package store
 
 import (
+	"log"
 	"sync"
 
 	"srs-mobile-demo/models"
@@ -153,10 +154,20 @@ func (s *MemoryStore) GetRoomViewerCount(roomID string) int {
 // BroadcastToRoom 廣播消息到房間所有客戶端
 func (s *MemoryStore) BroadcastToRoom(roomID string, message interface{}) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	clients := s.chatClients[roomID]
+	s.mu.RUnlock()
+
+	log.Printf("[BROADCAST] 房間 %s 有 %d 個連接客戶端", roomID, len(clients))
+
+	successCount := 0
 	for _, conn := range clients {
-		conn.WriteJSON(message)
+		err := conn.WriteJSON(message)
+		if err != nil {
+			log.Printf("[BROADCAST_ERROR] 發送失敗: %v", err)
+		} else {
+			successCount++
+		}
 	}
+
+	log.Printf("[BROADCAST] 成功發送到 %d/%d 個客戶端", successCount, len(clients))
 }

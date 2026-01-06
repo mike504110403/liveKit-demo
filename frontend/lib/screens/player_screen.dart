@@ -38,6 +38,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _retryTimer;
   String? _hlsUrl; // 儲存 HLS URL for Web iframe
   String? _flvUrl; // 儲存 FLV URL for Mobile
+  Key _playerKey = UniqueKey(); // 用於強制重建播放器
 
   // WebSocket 訂閱
   StreamSubscription? _messageSubscription;
@@ -131,6 +132,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _error = null;
           _loading = true;
           _retryCount = 0;
+          _playerKey = UniqueKey(); // 強制重建播放器
         });
 
         // 重新初始化播放器
@@ -921,6 +923,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 )
                               : (_hlsUrl != null && _flvUrl != null)
                                   ? AdaptiveVideoPlayer(
+                                      key: _playerKey, // 使用唯一 key 強制重建
                                       hlsUrl: _hlsUrl!,
                                       flvUrl: _flvUrl!,
                                       onError: () {

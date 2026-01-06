@@ -7,7 +7,7 @@
 - **前端**: Flutter (Web + iOS/Android)
 - **後端**: Go + Gin Framework
 - **流媒體服務器**: SRS 5.0
-- **通訊**: WebSocket (房間狀態同步、聊天)
+- **通訊**: WebSocket (房間狀態同步、聊天、心跳)
 - **直播協議**: RTMP (推流) + HLS/FLV (拉流)
 
 ---
@@ -26,6 +26,7 @@
 - 房間狀態: `idle` (等待中) / `live` (直播中)
 - SRS 回調觸發狀態變更並通過 WebSocket 通知房間內用戶
 - 用戶進入房間時重新獲取最新狀態
+- 使用 UniqueKey 強制重建播放器
 
 ### 3. 關鍵組件
 
@@ -36,7 +37,11 @@
 - `player_screen.dart`: 播放器頁面
   - 監聽 WebSocket 事件 (stream_started, stream_stopped)
   - 進入時獲取房間最新狀態
+  - 使用 UniqueKey 強制重建播放器
 - `websocket_service.dart`: WebSocket 通訊服務
+  - 心跳機制（25 秒發送一次）
+  - 自動重連處理
+  - 消息類型分發
 
 #### 後端 (Go)
 - `srs.go`: SRS 回調處理
@@ -45,6 +50,13 @@
 - `room.go`: 房間管理
   - 創建房間、獲取播放 URL、更新狀態
 - `memory.go`: 內存存儲 + WebSocket 廣播
+  - 線程安全的連接管理
+  - 詳細的廣播日誌
+- `chat.go`: WebSocket 連接處理
+  - 心跳機制（30 秒發送 Ping）
+  - 心跳包過濾
+  - 空消息過濾
+  - 詳細的連接日誌
 
 ---
 
@@ -61,6 +73,7 @@ if oldStatus == "idle" {
     "type": "stream_started",
     "message": "直播已開始",
   })
+  log.Printf("[STREAM_STARTED] Room: %s (ID: %s), Broadcasting to viewers", room.Title, room.ID)
 }
 
 // OnUnpublish - 停止推流
@@ -69,6 +82,7 @@ if oldStatus == "live" {
     "type": "stream_stopped",
     "message": "直播已停止",
   })
+  log.Printf("[STREAM_STOPPED] Room: %s (ID: %s), Broadcasting to viewers", room.Title, room.ID)
 }
 ```
 
@@ -78,6 +92,7 @@ if oldStatus == "live" {
 _streamStartedSubscription = _wsService.onStreamStarted.listen((message) {
   setState(() {
     _roomStatus = 'live';
+    _playerKey = UniqueKey();  // 🔑 強制重建播放器
   });
   _initPlayer();
 });
@@ -87,6 +102,7 @@ _streamStoppedSubscription = _wsService.onStreamStopped.listen((message) {
   setState(() {
     _roomStatus = 'idle';
   });
+  _cleanupPlayer();
 });
 ```
 
@@ -112,11 +128,31 @@ Future<void> _fetchRoomStatus() async {
   setState(() {
     _roomStatus = room.status;
   });
+  // 連接 WebSocket
+  _wsService.connect(widget.room.id, widget.user.token);
 }
 ```
 
 ### 3. 播放器實現 ⭐ 不要改壞
 **原則**: 保持簡單可靠的播放器實現
+
+**播放器重建機制**:
+```dart
+// 在 State 中定義
+Key _playerKey = UniqueKey();
+
+// 收到開始直播通知時更新
+setState(() {
+  _playerKey = UniqueKey();  // 強制 Flutter 重建播放器
+});
+
+// 使用 key
+AdaptiveVideoPlayer(
+  key: _playerKey,  // 🔑 關鍵！
+  hlsUrl: _hlsUrl!,
+  flvUrl: _flvUrl!,
+)
+```
 
 **Web (video_player + HLS)**:
 ```dart
@@ -143,8 +179,93 @@ await _fijkPlayer!.setDataSource(flvUrl, autoPlay: true);
 - ❌ 不要使用 platformViewRegistry (Web API 不穩定)
 - ❌ 不要使用複雜的 dart:js 互操作
 - ❌ 不要嘗試 iframe + flv.js 方案 (定位問題多)
+- ❌ 不要忘記使用 UniqueKey 強制重建
 
-### 4. SRS 配置
+### 4. WebSocket 通訊 ⭐ 重要
+
+**前端心跳機制**:
+```dart
+// 每 25 秒發送心跳
+_pingTimer = Timer.periodic(Duration(seconds: 25), (timer) {
+  _channel!.sink.add(jsonEncode({'type': 'ping'}));
+});
+```
+
+**前端錯誤處理**:
+```dart
+_channel!.stream.listen(
+  (data) {
+    // 處理消息
+    final json = jsonDecode(data);
+    if (json['type'] == 'stream_started') {
+      _streamStartedController.add(json['message']);
+    }
+  },
+  onError: (error) {
+    print('❌ [WebSocket] 連接錯誤: $error');
+  },
+  onDone: () {
+    print('🔌 [WebSocket] 連接已關閉');
+    _stopPing();
+  },
+  cancelOnError: false,
+);
+```
+
+**後端心跳處理**:
+```go
+// 讀取消息時過濾心跳包
+var msg struct {
+  Type    string `json:"type"`
+  Message string `json:"message"`
+}
+
+err := conn.ReadJSON(&msg)
+if err != nil {
+  log.Printf("[WS_DISCONNECT] 用戶 %s 離開房間: %v", user.Nickname, err)
+  return
+}
+
+// 過濾心跳包
+if msg.Type == "ping" {
+  log.Printf("[WS_HEARTBEAT] 收到來自 %s 的心跳", user.Nickname)
+  continue  // 不廣播
+}
+
+// 過濾空消息
+if msg.Message == "" {
+  log.Printf("[WS_SKIP] 跳過空消息 - 用戶: %s", user.Nickname)
+  continue  // 不廣播
+}
+```
+
+**後端 Ping/Pong 機制**:
+```go
+// 設置 Pong 處理器
+conn.SetPongHandler(func(string) error {
+  log.Printf("[WS_PONG] 收到來自 %s 的心跳回應", user.Nickname)
+  conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+  return nil
+})
+
+// 每 30 秒發送 Ping
+pingTicker := time.NewTicker(30 * time.Second)
+defer pingTicker.Stop()
+
+for {
+  select {
+  case <-pingTicker.C:
+    log.Printf("[WS_PING] 發送心跳到 %s", user.Nickname)
+    if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+      return
+    }
+  case <-done:
+    return
+  }
+}
+```
+
+### 5. SRS 配置
 **文件**: `srs/conf/srs.conf`
 
 **關鍵配置**:
@@ -176,7 +297,7 @@ vhost __defaultVhost__ {
 - OBS 關鍵幀間隔設為 4 秒，SRS `hls_fragment` 也設為 4
 - 不要改動 OBS 設置，而是調整 SRS 配置來適配
 
-### 5. URL 生成與緩存
+### 6. URL 生成與緩存
 **後端 API**:
 ```go
 // 添加時間戳防止緩存
@@ -187,7 +308,7 @@ return gin.H{
 }
 ```
 
-### 6. 房間列表
+### 7. 房間列表
 **原則**: 任何狀態的房間都允許進入
 
 ```dart
@@ -199,6 +320,34 @@ trailing: room.isLive
 
 // ❌ 錯誤 - 不要禁用 idle 房間
 onTap: room.isLive ? () => ... : null,
+```
+
+### 8. 日誌規範
+
+**後端日誌標籤**:
+```go
+log.Printf("[WS_CONNECT] ✅ 用戶 %s 加入房間 %s", user.Nickname, room.Title)
+log.Printf("[WS_DISCONNECT] 用戶 %s 離開房間", user.Nickname)
+log.Printf("[WS_PING] 發送心跳到 %s", user.Nickname)
+log.Printf("[WS_PONG] 收到來自 %s 的心跳回應", user.Nickname)
+log.Printf("[WS_HEARTBEAT] 收到來自 %s 的心跳", user.Nickname)
+log.Printf("[WS_SKIP] 跳過空消息 - 用戶: %s", user.Nickname)
+log.Printf("[CHAT] %s: %s", user.Nickname, msg.Message)
+log.Printf("[BROADCAST] 房間 %s 有 %d 個連接客戶端", roomID, len(clients))
+log.Printf("[BROADCAST] 成功發送到 %d/%d 個客戶端", successCount, len(clients))
+log.Printf("[STREAM_STARTED] Room: %s, Broadcasting to viewers", room.Title)
+log.Printf("[STREAM_STOPPED] Room: %s, Broadcasting to viewers", room.Title)
+```
+
+**前端日誌**:
+```dart
+print('🔌 [WebSocket] 嘗試連接: $url');
+print('✅ [WebSocket] 連接成功');
+print('📩 [WebSocket] 收到原始數據: $data');
+print('▶️  [WebSocket] 收到開始直播通知');
+print('⏹️  [WebSocket] 收到停止直播通知');
+print('💓 [WebSocket] 發送心跳');
+print('🎬 [播放器] 房間狀態: $_roomStatus');
 ```
 
 ---
@@ -221,33 +370,57 @@ onTap: room.isLive ? () => ... : null,
 **原因**: 
 - 房間狀態未同步
 - WebSocket 通知未觸發
+- 播放器未重建
 
 **解決**:
 1. 檢查後端 `OnPublish` 是否廣播 `stream_started`
 2. 檢查前端是否監聽 `onStreamStarted`
 3. 檢查前端 `initState` 是否呼叫 `_fetchRoomStatus()`
+4. 檢查是否使用 `UniqueKey` 強制重建播放器
 
-### 問題 3: 開始直播後觀眾沒收到通知
+### 問題 3: 再次開播時播放器不工作
 **原因**: 
-- 後端沒有廣播事件
+- 播放器實例未重建
+- Flutter 認為是同一個 Widget
 
-**檢查**:
-```bash
-# 查看後端日誌
-tail -f /tmp/backend.log | grep "STREAM_STARTED"
-
-# 應該看到:
-# [STREAM_STARTED] Room: xxx (ID: xxx), Broadcasting to viewers
+**解決**:
+```dart
+// 使用 UniqueKey 強制重建
+setState(() {
+  _playerKey = UniqueKey();
+});
 ```
 
-### 問題 4: WebSocket 連接失敗
-**檢查**:
-```dart
-// 確認連接邏輯
-_wsService.connect('ws://localhost:3000/ws', roomId, userId);
+### 問題 4: 聊天消息不同步或有空消息
+**原因**: 
+- 心跳包被當作聊天消息廣播
+- 後端沒有過濾空消息
 
-// 檢查後端路由
-router.GET("/ws", wsHandler.HandleWebSocket)
+**解決**:
+1. 檢查後端是否過濾 `type: ping` 消息
+2. 檢查後端是否過濾空消息
+3. 查看後端日誌：`tail -f /tmp/backend.log | grep "\[WS_HEARTBEAT\]"`
+
+### 問題 5: WebSocket 連接意外斷開
+**原因**: 
+- 沒有心跳機制
+- 網絡閒置超時
+
+**解決**:
+1. 確認前端每 25 秒發送心跳
+2. 確認後端每 30 秒發送 Ping
+3. 確認後端設置 Pong 處理器
+4. 查看連接日誌
+
+### 問題 6: 後端廣播沒有到達客戶端
+**檢查後端日誌**:
+```bash
+tail -f /tmp/backend.log | grep -E "\[BROADCAST\]|\[STREAM_STARTED\]"
+
+# 應該看到:
+# [STREAM_STARTED] Room: xxx, Broadcasting to viewers
+# [BROADCAST] 房間 xxx 有 2 個連接客戶端
+# [BROADCAST] 成功發送到 2/2 個客戶端
 ```
 
 ---
@@ -259,7 +432,7 @@ router.GET("/ws", wsHandler.HandleWebSocket)
 - [ ] 顯示「直播尚未開始」
 - [ ] 主播開始推流
 - [ ] 觀眾收到 `stream_started` 通知
-- [ ] 播放器自動初始化並開始播放
+- [ ] 播放器自動初始化並開始播放（使用新的 UniqueKey）
 - [ ] 延遲在合理範圍（HLS: 15-20s, FLV: 1-3s）
 
 ### 場景 2: 主播已開播，觀眾後進入
@@ -267,15 +440,30 @@ router.GET("/ws", wsHandler.HandleWebSocket)
 - [ ] 自動獲取最新房間狀態
 - [ ] 播放器立即初始化並開始播放
 
-### 場景 3: 主播停止推流
+### 場景 3: 主播停止推流後再次開播
 - [ ] 觀眾收到 `stream_stopped` 通知
 - [ ] 顯示「直播已停止」提示
-- [ ] 播放器停止
+- [ ] 播放器停止並清理
+- [ ] 主播再次推流
+- [ ] 觀眾收到 `stream_started` 通知
+- [ ] 播放器**完全重建**並開始播放（關鍵測試）
 
-### 場景 4: 房間列表
+### 場景 4: 聊天同步
+- [ ] 主播發送消息，觀眾立即收到
+- [ ] 觀眾發送消息，主播立即收到
+- [ ] 兩邊消息列表完全一致
+- [ ] 沒有空消息出現
+- [ ] 心跳包不會出現在聊天中
+
+### 場景 5: 房間列表
 - [ ] 顯示「直播中」(紅色) 或「等待中」(灰色)
 - [ ] 任何狀態的房間都可以點擊進入
 - [ ] 房間觀看人數正確顯示
+
+### 場景 6: WebSocket 穩定性
+- [ ] 連接後 5 分鐘內不斷開
+- [ ] 心跳日誌正常輸出
+- [ ] 長時間空閒後仍能正常收發消息
 
 ---
 
@@ -291,10 +479,30 @@ docker compose -f docker-compose-full.yml up -d
 docker compose -f docker-compose-full.yml restart srs
 ```
 
+### 重啟後端（代碼變更後）
+```bash
+# 方式 1: 直接重啟容器
+docker compose -f docker-compose-full.yml restart api
+
+# 方式 2: 本地開發（推薦）
+lsof -ti:3000 | xargs kill -9
+cd /Users/mike/Documents/self/srs-mobile-demo/backend
+go run main.go > /tmp/backend.log 2>&1 &
+```
+
 ### 查看日誌
 ```bash
-docker logs srs --tail 50 -f
+# 查看所有服務
 docker logs api --tail 50 -f
+docker logs srs --tail 50 -f
+
+# 本地開發後端日誌
+tail -f /tmp/backend.log
+
+# 過濾特定類型日誌
+tail -f /tmp/backend.log | grep -E "\[WS_CONNECT\]|\[CHAT\]"
+tail -f /tmp/backend.log | grep -E "\[BROADCAST\]|\[STREAM_"
+tail -f /tmp/backend.log | grep "\[WS_HEARTBEAT\]"
 ```
 
 ### 清理並重新啟動（解決緩存問題）
@@ -312,14 +520,15 @@ docker compose -f docker-compose-full.yml up -d
 - `GET /api/rooms/:id` - 獲取單個房間
 - `POST /api/rooms` - 創建房間
 - `GET /api/rooms/:id/play_url` - 獲取播放地址
-- `PUT /api/rooms/:id/status` - 更新房間狀態
+- `PATCH /api/rooms/:id/status` - 更新房間狀態
+- `DELETE /api/rooms/:id` - 刪除房間
 
 ### SRS 回調
 - `POST /srs/on_publish` - 推流回調
 - `POST /srs/on_unpublish` - 停止推流回調
 
 ### WebSocket
-- `GET /ws?room_id=xxx&user_id=xxx` - WebSocket 連接
+- `GET /chat/:room_id?token=xxx` - WebSocket 連接
 
 ---
 
@@ -328,10 +537,14 @@ docker compose -f docker-compose-full.yml up -d
 1. ✅ **保持播放器簡單**: 使用標準的 video_player 和 fijkplayer
 2. ✅ **狀態同步至關重要**: 開始/停止直播必須通過 WebSocket 通知
 3. ✅ **進入房間時重新獲取狀態**: 不要信任從列表頁帶來的狀態
-4. ✅ **任何房間都允許進入**: idle 和 live 狀態都可進入
-5. ✅ **配置 SRS 而非 OBS**: 保持 OBS 默認設置，調整 SRS 配置
-6. ✅ **防止緩存**: URL 時間戳 + HTTP headers + 關閉 GOP 緩存
-7. ❌ **不要過度工程化**: 避免複雜的 JS 互操作和 iframe 方案
+4. ✅ **使用 UniqueKey 強制重建**: 確保播放器在再次開播時完全重建
+5. ✅ **任何房間都允許進入**: idle 和 live 狀態都可進入
+6. ✅ **配置 SRS 而非 OBS**: 保持 OBS 默認設置，調整 SRS 配置
+7. ✅ **防止緩存**: URL 時間戳 + HTTP headers + 關閉 GOP 緩存
+8. ✅ **WebSocket 心跳機制**: 前端 25 秒，後端 30 秒 Ping
+9. ✅ **過濾心跳包**: 後端必須過濾 `type: ping` 和空消息
+10. ✅ **詳細日誌**: 所有關鍵操作都要有日誌，方便追蹤問題
+11. ❌ **不要過度工程化**: 避免複雜的 JS 互操作和 iframe 方案
 
 ---
 
@@ -339,4 +552,4 @@ docker compose -f docker-compose-full.yml up -d
 - SRS 文檔: https://ossrs.net/lts/zh-cn/docs/v5/doc/introduction
 - Flutter video_player: https://pub.dev/packages/video_player
 - fijkplayer: https://pub.dev/packages/fijkplayer
-
+- Gorilla WebSocket: https://github.com/gorilla/websocket
