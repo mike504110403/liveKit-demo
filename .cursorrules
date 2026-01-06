@@ -1,0 +1,342 @@
+# SRS Mobile Demo - Cursor Rules
+
+## 專案概述
+這是一個基於 SRS (Simple Realtime Server) 的移動直播應用 Demo，支援 Web 和 Mobile 平台。
+
+### 技術棧
+- **前端**: Flutter (Web + iOS/Android)
+- **後端**: Go + Gin Framework
+- **流媒體服務器**: SRS 5.0
+- **通訊**: WebSocket (房間狀態同步、聊天)
+- **直播協議**: RTMP (推流) + HLS/FLV (拉流)
+
+---
+
+## 架構設計
+
+### 1. 直播流程
+```
+主播端: OBS → RTMP → SRS
+觀眾端: 
+  - Web: SRS → HLS → video_player
+  - Mobile: SRS → HTTP-FLV → fijkplayer
+```
+
+### 2. 狀態管理
+- 房間狀態: `idle` (等待中) / `live` (直播中)
+- SRS 回調觸發狀態變更並通過 WebSocket 通知房間內用戶
+- 用戶進入房間時重新獲取最新狀態
+
+### 3. 關鍵組件
+
+#### 前端 (Flutter)
+- `adaptive_video_player.dart`: 自適應播放器
+  - Web: video_player + HLS
+  - Mobile: fijkplayer + HTTP-FLV
+- `player_screen.dart`: 播放器頁面
+  - 監聽 WebSocket 事件 (stream_started, stream_stopped)
+  - 進入時獲取房間最新狀態
+- `websocket_service.dart`: WebSocket 通訊服務
+
+#### 後端 (Go)
+- `srs.go`: SRS 回調處理
+  - `OnPublish`: 開始推流 → 廣播 `stream_started`
+  - `OnUnpublish`: 停止推流 → 廣播 `stream_stopped`
+- `room.go`: 房間管理
+  - 創建房間、獲取播放 URL、更新狀態
+- `memory.go`: 內存存儲 + WebSocket 廣播
+
+---
+
+## 開發規範
+
+### 1. 直播狀態同步 ⭐ 重要
+**原則**: 開始/停止直播必須通知房間內所有用戶
+
+**後端 (SRS 回調)**:
+```go
+// OnPublish - 開始推流
+if oldStatus == "idle" {
+  h.store.BroadcastToRoom(room.ID, map[string]interface{}{
+    "type": "stream_started",
+    "message": "直播已開始",
+  })
+}
+
+// OnUnpublish - 停止推流
+if oldStatus == "live" {
+  h.store.BroadcastToRoom(room.ID, map[string]interface{}{
+    "type": "stream_stopped",
+    "message": "直播已停止",
+  })
+}
+```
+
+**前端 (監聽)**:
+```dart
+// 監聽開始直播事件
+_streamStartedSubscription = _wsService.onStreamStarted.listen((message) {
+  setState(() {
+    _roomStatus = 'live';
+  });
+  _initPlayer();
+});
+
+// 監聽停止直播事件
+_streamStoppedSubscription = _wsService.onStreamStopped.listen((message) {
+  setState(() {
+    _roomStatus = 'idle';
+  });
+});
+```
+
+### 2. 用戶進入房間處理
+**原則**: 用戶進入時必須獲取房間最新狀態
+
+```dart
+@override
+void initState() {
+  super.initState();
+  _isHost = widget.user.id == widget.room.hostId;
+  
+  // 重新獲取最新狀態（避免使用舊數據）
+  _fetchRoomStatus().then((_) {
+    if (!_isHost && _roomStatus == 'live') {
+      _initPlayer();  // 如果已在直播，立即初始化播放器
+    }
+  });
+}
+
+Future<void> _fetchRoomStatus() async {
+  final room = await _apiService.getRoom(widget.room.id);
+  setState(() {
+    _roomStatus = room.status;
+  });
+}
+```
+
+### 3. 播放器實現 ⭐ 不要改壞
+**原則**: 保持簡單可靠的播放器實現
+
+**Web (video_player + HLS)**:
+```dart
+_videoController = VideoPlayerController.networkUrl(
+  Uri.parse(hlsUrl),
+  httpHeaders: {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  },
+);
+```
+
+**Mobile (fijkplayer + FLV)**:
+```dart
+_fijkPlayer = FijkPlayer();
+// 低延遲配置
+_fijkPlayer!.setOption(FijkOption.formatCategory, "fflags", "nobuffer");
+_fijkPlayer!.setOption(FijkOption.playerCategory, "max_cached_duration", 3000);
+await _fijkPlayer!.setDataSource(flvUrl, autoPlay: true);
+```
+
+**禁止**: 
+- ❌ 不要使用 platformViewRegistry (Web API 不穩定)
+- ❌ 不要使用複雜的 dart:js 互操作
+- ❌ 不要嘗試 iframe + flv.js 方案 (定位問題多)
+
+### 4. SRS 配置
+**文件**: `srs/conf/srs.conf`
+
+**關鍵配置**:
+```nginx
+vhost __defaultVhost__ {
+    min_latency     on;
+    gop_cache       off;              # 關閉 GOP 緩存，避免舊畫面
+    
+    hls {
+        hls_fragment    4;            # 4秒切片（配合 OBS 關鍵幀）
+        hls_window      60;           # 保留 15 個切片（60秒）
+        hls_wait_keyframe on;         # 等待關鍵幀切片
+    }
+    
+    http_remux {
+        enabled     on;               # HTTP-FLV 支援
+        fast_cache  2;
+    }
+    
+    http_hooks {
+        enabled         on;
+        on_publish      http://api:3000/srs/on_publish;
+        on_unpublish    http://api:3000/srs/on_unpublish;
+    }
+}
+```
+
+**注意**: 
+- OBS 關鍵幀間隔設為 4 秒，SRS `hls_fragment` 也設為 4
+- 不要改動 OBS 設置，而是調整 SRS 配置來適配
+
+### 5. URL 生成與緩存
+**後端 API**:
+```go
+// 添加時間戳防止緩存
+timestamp := time.Now().UnixMilli()
+return gin.H{
+  "hls": fmt.Sprintf("http://localhost:8080/live/%s.m3u8?t=%d", streamKey, timestamp),
+  "flv": fmt.Sprintf("http://localhost:8080/live/%s.flv?t=%d", streamKey, timestamp),
+}
+```
+
+### 6. 房間列表
+**原則**: 任何狀態的房間都允許進入
+
+```dart
+// ✅ 正確
+onTap: () => Navigator.push(...),
+trailing: room.isLive 
+  ? Chip('直播中', backgroundColor: Colors.red)
+  : Chip('等待中', backgroundColor: Colors.grey),
+
+// ❌ 錯誤 - 不要禁用 idle 房間
+onTap: room.isLive ? () => ... : null,
+```
+
+---
+
+## 故障排查
+
+### 問題 1: 畫面不動或顯示舊畫面
+**原因**: 
+- HLS 切片緩存
+- m3u8 播放列表緩存
+- GOP 緩存未關閉
+
+**解決**:
+1. 確認 `gop_cache off`
+2. URL 添加時間戳
+3. HTTP headers 設置 no-cache
+4. 重啟 SRS: `docker compose restart srs`
+
+### 問題 2: 觀眾進入房間看不到直播
+**原因**: 
+- 房間狀態未同步
+- WebSocket 通知未觸發
+
+**解決**:
+1. 檢查後端 `OnPublish` 是否廣播 `stream_started`
+2. 檢查前端是否監聽 `onStreamStarted`
+3. 檢查前端 `initState` 是否呼叫 `_fetchRoomStatus()`
+
+### 問題 3: 開始直播後觀眾沒收到通知
+**原因**: 
+- 後端沒有廣播事件
+
+**檢查**:
+```bash
+# 查看後端日誌
+tail -f /tmp/backend.log | grep "STREAM_STARTED"
+
+# 應該看到:
+# [STREAM_STARTED] Room: xxx (ID: xxx), Broadcasting to viewers
+```
+
+### 問題 4: WebSocket 連接失敗
+**檢查**:
+```dart
+// 確認連接邏輯
+_wsService.connect('ws://localhost:3000/ws', roomId, userId);
+
+// 檢查後端路由
+router.GET("/ws", wsHandler.HandleWebSocket)
+```
+
+---
+
+## 測試清單
+
+### 場景 1: 觀眾先進入，主播後開播
+- [ ] 觀眾可以進入 idle 狀態的房間
+- [ ] 顯示「直播尚未開始」
+- [ ] 主播開始推流
+- [ ] 觀眾收到 `stream_started` 通知
+- [ ] 播放器自動初始化並開始播放
+- [ ] 延遲在合理範圍（HLS: 15-20s, FLV: 1-3s）
+
+### 場景 2: 主播已開播，觀眾後進入
+- [ ] 觀眾可以進入 live 狀態的房間
+- [ ] 自動獲取最新房間狀態
+- [ ] 播放器立即初始化並開始播放
+
+### 場景 3: 主播停止推流
+- [ ] 觀眾收到 `stream_stopped` 通知
+- [ ] 顯示「直播已停止」提示
+- [ ] 播放器停止
+
+### 場景 4: 房間列表
+- [ ] 顯示「直播中」(紅色) 或「等待中」(灰色)
+- [ ] 任何狀態的房間都可以點擊進入
+- [ ] 房間觀看人數正確顯示
+
+---
+
+## Docker 環境
+
+### 啟動服務
+```bash
+docker compose -f docker-compose-full.yml up -d
+```
+
+### 重啟 SRS（配置變更後）
+```bash
+docker compose -f docker-compose-full.yml restart srs
+```
+
+### 查看日誌
+```bash
+docker logs srs --tail 50 -f
+docker logs api --tail 50 -f
+```
+
+### 清理並重新啟動（解決緩存問題）
+```bash
+docker compose -f docker-compose-full.yml down
+docker compose -f docker-compose-full.yml up -d
+```
+
+---
+
+## API 端點
+
+### 房間管理
+- `GET /api/rooms` - 獲取房間列表
+- `GET /api/rooms/:id` - 獲取單個房間
+- `POST /api/rooms` - 創建房間
+- `GET /api/rooms/:id/play_url` - 獲取播放地址
+- `PUT /api/rooms/:id/status` - 更新房間狀態
+
+### SRS 回調
+- `POST /srs/on_publish` - 推流回調
+- `POST /srs/on_unpublish` - 停止推流回調
+
+### WebSocket
+- `GET /ws?room_id=xxx&user_id=xxx` - WebSocket 連接
+
+---
+
+## 記住的原則
+
+1. ✅ **保持播放器簡單**: 使用標準的 video_player 和 fijkplayer
+2. ✅ **狀態同步至關重要**: 開始/停止直播必須通過 WebSocket 通知
+3. ✅ **進入房間時重新獲取狀態**: 不要信任從列表頁帶來的狀態
+4. ✅ **任何房間都允許進入**: idle 和 live 狀態都可進入
+5. ✅ **配置 SRS 而非 OBS**: 保持 OBS 默認設置，調整 SRS 配置
+6. ✅ **防止緩存**: URL 時間戳 + HTTP headers + 關閉 GOP 緩存
+7. ❌ **不要過度工程化**: 避免複雜的 JS 互操作和 iframe 方案
+
+---
+
+## 相關文檔
+- SRS 文檔: https://ossrs.net/lts/zh-cn/docs/v5/doc/introduction
+- Flutter video_player: https://pub.dev/packages/video_player
+- fijkplayer: https://pub.dev/packages/fijkplayer
+

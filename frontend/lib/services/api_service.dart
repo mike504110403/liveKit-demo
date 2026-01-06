@@ -52,6 +52,17 @@ class ApiService {
     }
   }
   
+  // 獲取單個房間
+  Future<Room> getRoom(String roomId) async {
+    final response = await http.get(Uri.parse('$baseUrl/rooms/$roomId'));
+    
+    if (response.statusCode == 200) {
+      return Room.fromJson(json.decode(response.body));
+    } else {
+      throw Exception('獲取房間失敗');
+    }
+  }
+  
   // 獲取播放地址
   Future<PlayUrls> getPlayUrls(String roomId) async {
     final response = await http.get(

@@ -49,8 +49,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void initState() {
     super.initState();
     _isHost = widget.user.id == widget.room.hostId;
-    _roomStatus = widget.room.status;
-    _initPlayer();
+    print('🎬 [播放器] 初始化 - 是否主播: $_isHost');
+    
+    // 重新獲取最新的房間狀態（避免使用舊數據）
+    _fetchRoomStatus().then((_) {
+      print('🎬 [播放器] 房間狀態已更新: $_roomStatus');
+      if (!_isHost) {
+        _initPlayer();
+      }
+    });
+    
+    if (_isHost) {
+      _roomStatus = widget.room.status;
+      _initPlayer();
+    }
 
     // 監聽聊天消息
     _messageSubscription = _wsService.messages.listen((message) {
@@ -134,6 +146,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
         );
       }
     });
+  }
+
+  /// 獲取最新的房間狀態
+  Future<void> _fetchRoomStatus() async {
+    try {
+      print('🔄 [播放器] 正在獲取房間狀態...');
+      final room = await _apiService.getRoom(widget.room.id);
+      if (mounted) {
+        setState(() {
+          _roomStatus = room.status;
+        });
+        print('✅ [播放器] 房間狀態: $_roomStatus');
+      }
+    } catch (e) {
+      print('❌ [播放器] 獲取房間狀態失敗: $e');
+      // 失敗時使用傳入的狀態
+      setState(() {
+        _roomStatus = widget.room.status;
+      });
+    }
 
     _wsService.connect(widget.room.id, widget.user.token);
   }

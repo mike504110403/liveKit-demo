@@ -234,18 +234,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                   label: Text('直播中', style: TextStyle(color: Colors.white)),
                                   backgroundColor: Colors.red,
                                 )
-                              : null,
-                          onTap: room.isLive
-                              ? () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => PlayerScreen(
-                                        user: widget.user,
-                                        room: room,
-                                      ),
-                                    ),
-                                  )
-                              : null,
+                              : Chip(
+                                  label: Text('等待中', style: TextStyle(color: Colors.white)),
+                                  backgroundColor: Colors.grey,
+                                ),
+                          onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => PlayerScreen(
+                                    user: widget.user,
+                                    room: room,
+                                  ),
+                                ),
+                              ),
                         ),
                       );
                     },
