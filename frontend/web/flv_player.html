@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>FLV Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/flv.js@latest"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+        }
+        #videoElement {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .error-overlay {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            text-align: center;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <video id="videoElement" controls autoplay></video>
+    <div id="errorOverlay" class="error-overlay"></div>
+    
+    <script>
+        let flvPlayer = null;
+        
+        // 從 URL 參數獲取 FLV 地址
+        function getFlvUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('url') || '';
+        }
+        
+        // 顯示錯誤
+        function showError(message) {
+            const overlay = document.getElementById('errorOverlay');
+            overlay.textContent = message;
+            overlay.style.display = 'block';
+            console.error('[FLV Player]', message);
+        }
+        
+        // 初始化播放器
+        function initPlayer() {
+            const flvUrl = getFlvUrl();
+            
+            console.log('[FLV Player] 初始化播放器');
+            console.log('[FLV Player] URL:', flvUrl);
+            
+            if (!flvUrl) {
+                showError('錯誤：未提供 FLV URL');
+                return;
+            }
+            
+            if (!flvjs.isSupported()) {
+                showError('錯誤：您的瀏覽器不支援 FLV 播放');
+                return;
+            }
+            
+            const videoElement = document.getElementById('videoElement');
+            
+            try {
+                flvPlayer = flvjs.createPlayer({
+                    type: 'flv',
+                    url: flvUrl,
+                    isLive: true,
+                    hasAudio: true,
+                    hasVideo: true,
+                    cors: true,
+                }, {
+                    enableWorker: true,
+                    enableStashBuffer: false,
+                    stashInitialSize: 128,
+                    isLive: true,
+                    lazyLoad: false,
+                    autoCleanupSourceBuffer: true,
+                });
+                
+                flvPlayer.attachMediaElement(videoElement);
+                
+                // 錯誤處理
+                flvPlayer.on(flvjs.Events.ERROR, (errorType, errorDetail, errorInfo) => {
+                    console.error('[FLV Player] 播放錯誤:', errorType, errorDetail, errorInfo);
+                    showError(`播放錯誤: ${errorType} - ${errorDetail}`);
+                });
+                
+                // 載入並播放
+                flvPlayer.load();
+                flvPlayer.play().then(() => {
+                    console.log('[FLV Player] 開始播放');
+                }).catch(err => {
+                    console.warn('[FLV Player] 自動播放失敗，嘗試靜音播放:', err);
+                    videoElement.muted = true;
+                    flvPlayer.play().then(() => {
+                        console.log('[FLV Player] 靜音播放成功');
+                    });
+                });
+            } catch (err) {
+                console.error('[FLV Player] 初始化失敗:', err);
+                showError('初始化失敗: ' + err.message);
+            }
+        }
+        
+        // 清理
+        function cleanup() {
+            if (flvPlayer) {
+                console.log('[FLV Player] 清理播放器');
+                try {
+                    flvPlayer.pause();
+                    flvPlayer.unload();
+                    flvPlayer.detachMediaElement();
+                    flvPlayer.destroy();
+                } catch (err) {
+                    console.error('[FLV Player] 清理時出錯:', err);
+                }
+                flvPlayer = null;
+            }
+        }
+        
+        // 頁面卸載時清理
+        window.addEventListener('beforeunload', cleanup);
+        
+        // 監聽來自 Flutter 的消息
+        window.addEventListener('message', (event) => {
+            console.log('[FLV Player] 收到消息:', event.data);
+            if (event.data.type === 'updateUrl') {
+                cleanup();
+                setTimeout(() => {
+                    window.location.search = `?url=${encodeURIComponent(event.data.url)}`;
+                }, 100);
+            } else if (event.data.type === 'dispose') {
+                cleanup();
+            }
+        });
+        
+        // 初始化
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initPlayer);
+        } else {
+            initPlayer();
+        }
+    </script>
+</body>
+</html>
+

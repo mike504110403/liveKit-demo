@@ -21,6 +21,11 @@ public final class GeneratedPluginRegistrant {
       Log.e(TAG, "Error registering plugin agora_rtc_engine, io.agora.agora_rtc_ng.AgoraRtcNgPlugin", e);
     }
     try {
+      flutterEngine.getPlugins().add(new com.befovy.fijkplayer.FijkPlugin());
+    } catch (Exception e) {
+      Log.e(TAG, "Error registering plugin fijkplayer, com.befovy.fijkplayer.FijkPlugin", e);
+    }
+    try {
       flutterEngine.getPlugins().add(new com.agora.iris_method_channel.IrisMethodChannelPlugin());
     } catch (Exception e) {
       Log.e(TAG, "Error registering plugin iris_method_channel, com.agora.iris_method_channel.IrisMethodChannelPlugin", e);

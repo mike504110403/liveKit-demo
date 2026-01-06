@@ -12,6 +12,12 @@
 @import agora_rtc_engine;
 #endif
 
+#if __has_include(<fijkplayer/FijkPlugin.h>)
+#import <fijkplayer/FijkPlugin.h>
+#else
+@import fijkplayer;
+#endif
+
 #if __has_include(<iris_method_channel/IrisMethodChannelPlugin.h>)
 #import <iris_method_channel/IrisMethodChannelPlugin.h>
 #else
@@ -34,6 +40,7 @@
 
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
   [AgoraRtcNgPlugin registerWithRegistrar:[registry registrarForPlugin:@"AgoraRtcNgPlugin"]];
+  [FijkPlugin registerWithRegistrar:[registry registrarForPlugin:@"FijkPlugin"]];
   [IrisMethodChannelPlugin registerWithRegistrar:[registry registrarForPlugin:@"IrisMethodChannelPlugin"]];
   [PermissionHandlerPlugin registerWithRegistrar:[registry registrarForPlugin:@"PermissionHandlerPlugin"]];
   [FVPVideoPlayerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FVPVideoPlayerPlugin"]];

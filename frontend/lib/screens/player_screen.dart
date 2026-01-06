@@ -2,17 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_player/video_player.dart';
 import 'dart:async';
-import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/room.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../widgets/chat_widget.dart';
+import '../widgets/adaptive_video_player.dart';
 import 'stream_screen.dart';
-// Web 專用導入
-import 'dart:ui_web' as ui_web;
-import 'dart:html' as html;
 
 class PlayerScreen extends StatefulWidget {
   final User user;
@@ -29,7 +26,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final _wsService = WebSocketService();
   final List<ChatMessage> _messages = [];
 
+  // video_player (Web + HLS) - 備用
   VideoPlayerController? _controller;
+
   bool _loading = true;
   String? _error;
   bool _isHost = false;
@@ -38,6 +37,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   static const int _maxRetries = 3;
   Timer? _retryTimer;
   String? _hlsUrl; // 儲存 HLS URL for Web iframe
+  String? _flvUrl; // 儲存 FLV URL for Mobile
 
   // WebSocket 訂閱
   StreamSubscription? _messageSubscription;
@@ -186,80 +186,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
     try {
       print('📡 [播放器] 獲取播放地址...');
       final urls = await _apiService.getPlayUrls(widget.room.id);
-      print('✅ [播放器] HLS 地址: ${urls.hls}');
 
-      // 所有平台統一使用 video_player
-      print('🎥 [播放器] 使用 video_player (${kIsWeb ? "Web" : "移動端"})');
-
-      // 清理舊的控制器
-      if (_controller != null) {
-        await _controller!.dispose();
-        _controller = null;
-      }
-
-      print('🎥 [播放器] 創建 VideoPlayerController...');
-      print('📍 [播放器] URL: ${urls.hls}');
-
-      _controller = VideoPlayerController.networkUrl(
-        Uri.parse(urls.hls),
-        videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true,
-          allowBackgroundPlayback: false,
-        ),
-        httpHeaders: {
-          'Accept': '*/*',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        },
-      );
-
-      print('⏳ [播放器] 初始化中...');
-      final timeout = Duration(seconds: 15);
-      await _controller!.initialize().timeout(
-        timeout,
-        onTimeout: () {
-          throw Exception('播放器初始化超時（${timeout.inSeconds}秒）');
-        },
-      );
-
-      if (!mounted) return;
-
-      print('▶️  [播放器] 開始播放...');
-
-      // 設置為循環播放（直播流）
-      await _controller!.setLooping(true);
-
-      // 設置音量
-      await _controller!.setVolume(1.0);
-
-      // 開始播放
-      await _controller!.play();
-
-      print('📊 [播放器] 初始化後狀態:');
-      print('   - isInitialized: ${_controller!.value.isInitialized}');
-      print('   - isPlaying: ${_controller!.value.isPlaying}');
-      print('   - duration: ${_controller!.value.duration}');
-      print('   - size: ${_controller!.value.size}');
-      print('   - aspectRatio: ${_controller!.value.aspectRatio}');
-
-      // 監聽播放狀態變化
-      _controller!.addListener(() {
-        if (_controller!.value.hasError) {
-          print('❌ [播放器] 錯誤: ${_controller!.value.errorDescription}');
-        }
-      });
-
-      // 重置重試計數
-      _retryCount = 0;
-
+      // 儲存 URLs 供 AdaptiveVideoPlayer 使用
       if (mounted) {
         setState(() {
+          _hlsUrl = urls.hls;
+          _flvUrl = urls.flv;
           _loading = false;
           _error = null;
+          _retryCount = 0;
         });
-        print('✅ [播放器] 初始化成功 (${kIsWeb ? "Web" : "移動端"})');
       }
+
+      print('✅ [播放器] 取得播放地址:');
+      print('   - HLS: ${urls.hls}');
+      print('   - FLV: ${urls.flv}');
+      print('   - 平台: ${kIsWeb ? "Web (HLS)" : "Mobile (FLV)"}');
+      print('✅ [播放器] AdaptiveVideoPlayer 將自動選擇適合的播放器');
     } catch (e) {
       print('❌ [播放器] 初始化失敗: $e');
 
@@ -713,41 +656,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _retryTimer?.cancel();
     _retryTimer = null;
 
-    // Web 平台清理
-    if (kIsWeb) {
-      _hlsUrl = null;
-    }
+    // 清理 URLs
+    _hlsUrl = null;
+    _flvUrl = null;
 
-    // 移動端播放器清理
+    // 清理 video_player (舊的，備用)
     if (_controller != null) {
       _controller!.pause();
       _controller!.dispose();
       _controller = null;
     }
 
+    // 清理 fijkplayer (由 AdaptiveVideoPlayer 自動處理)
+
     // 重置重試計數
     _retryCount = 0;
   }
 
   /// 構建 Web 播放器 (iframe + hls.js)
-  Widget _buildWebPlayer() {
-    if (!kIsWeb) return SizedBox.shrink();
-
-    // 註冊 iframe view
-    final String viewType = 'hls-player-${widget.room.id}';
-
-    ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
-      final iframe = html.IFrameElement();
-      iframe.src = '/player.html?url=${Uri.encodeComponent(_hlsUrl!)}';
-      iframe.style.border = 'none';
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.allow = 'autoplay';
-      return iframe;
-    });
-
-    return HtmlElementView(viewType: viewType);
-  }
+  // _buildWebPlayer 已移除，改用 AdaptiveVideoPlayer
 
   @override
   void dispose() {
@@ -960,12 +887,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                     ],
                                   ),
                                 )
-                              : _controller != null && _controller!.value.isInitialized
-                                  ? AspectRatio(
-                                      aspectRatio: _controller!.value.aspectRatio,
-                                      child: VideoPlayer(_controller!),
+                              : (_hlsUrl != null && _flvUrl != null)
+                                  ? AdaptiveVideoPlayer(
+                                      hlsUrl: _hlsUrl!,
+                                      flvUrl: _flvUrl!,
+                                      onError: () {
+                                        if (mounted) {
+                                          setState(() {
+                                            _error = 'player_error';
+                                            _loading = false;
+                                          });
+                                        }
+                                      },
+                                      onReady: () {
+                                        print('✅ [播放器] 自適應播放器準備完成');
+                                      },
                                     )
-                                  : Center(child: CircularProgressIndicator()),
+                                  : _controller != null && _controller!.value.isInitialized
+                                      ? AspectRatio(
+                                          aspectRatio: _controller!.value.aspectRatio,
+                                          child: VideoPlayer(_controller!),
+                                        )
+                                      : Center(child: CircularProgressIndicator()),
             ),
           ),
 

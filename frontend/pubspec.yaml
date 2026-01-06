@@ -13,8 +13,9 @@ dependencies:
   # 網絡請求
   http: ^1.1.0
   
-  # 視頻播放（移除不需要的 flutter_vlc_player）
-  video_player: ^2.8.1
+  # 視頻播放
+  video_player: ^2.8.1      # Web + HLS
+  fijkplayer: ^0.11.0       # Mobile + FLV (低延遲)
   
   # WebSocket
   web_socket_channel: ^2.4.0
