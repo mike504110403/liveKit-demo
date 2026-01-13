@@ -28,14 +28,14 @@ graph TB
     SRS -->|Storage| Infra
     Backend -->|Data| Infra
     
-    style Client fill:#e1f5ff
-    style SDK fill:#d4f1d4
-    style Backend fill:#fff4e1
-    style Middleware fill:#f0e1ff
-    style ThirdParty fill:#ffe1e1
-    style SRS fill:#e1ffe1
-    style SaaS fill:#ffe8cc
-    style Infra fill:#f5f5f5
+    style Client fill:#3498DB
+    style SDK fill:#2ECC71
+    style Backend fill:#F39C12
+    style Middleware fill:#9B59B6
+    style ThirdParty fill:#E74C3C
+    style SRS fill:#1ABC9C
+    style SaaS fill:#E67E22
+    style Infra fill:#95A5A6
 ```
 
 ## 架構說明
@@ -50,10 +50,17 @@ Web 端、Mobile 端、OBS 推流、管理後台
 平台服務、用戶服務、內容服務、推薦服務等核心業務邏輯
 
 ### 4. 中介層 (Middleware)
-金流中介、遊戲中介、聊天中介、通知中介，統一對接第三方
+金流中介、**遊戲中介**、聊天中介、通知中介，統一對接第三方
 
 ### 5. 第三方服務 (3rd Party)
-金流服務、遊戲平台、IM 服務、推播服務等外部服務
+- **金流服務**: 支付寶、微信支付等
+- **💜 遊戲服務（獨立主理）**: 外部遊戲團隊提供的遊戲平台（透過聊天室訊息參與遊戲）
+  - **重要**: 遊戲服務作為專案的主要組件之一，會大量更新迭代
+  - **開發模式**: 獨立主理，貫穿整個專案開發週期
+  - **對接方式**: 透過遊戲中介層統一對接
+  - **顏色標記**: 💜 紫色系
+- **IM 服務**: 即時通訊服務
+- **推播服務**: 推播通知服務
 
 ### 6. SRS 直播核心 (Live Stream)
 接收推流、轉碼、提供拉流、錄製（小規模直用 / 大規模轉推 SaaS）
@@ -125,11 +132,19 @@ graph LR
 ### 遊戲互動流程
 ```mermaid
 graph LR
-    A[觀眾端] --> B[平台服務]
-    B --> C[遊戲中介]
-    C --> D[遊戲平台]
-    D -.結果.-> B
+    A[觀眾端] -->|聊天訊息| B[直播服務<br/>WebSocket]
+    B -->|轉發遊戲指令| C[遊戲中介層]
+    C -->|API 調用| D[遊戲服務<br/>外部團隊]
+    D -->|結算結果| C
+    C -->|廣播結果| B
+    B -->|WebSocket| A
 ```
+**說明**:
+- 觀眾透過直播間聊天室發送訊息參與遊戲
+- 直播服務識別遊戲指令並轉發至遊戲中介層
+- 遊戲中介層統一對接外部遊戲服務 API
+- 遊戲服務處理遊戲邏輯並回傳結算結果
+- 結算結果透過 WebSocket 廣播給直播間所有觀眾
 
 ## 核心特點
 
@@ -171,10 +186,12 @@ graph LR
 
 ---
 
-**版本**: 3.0  
-**更新日期**: 2026-01-05  
+**版本**: 3.2  
+**更新日期**: 2026-01-13  
 **主要變更**: 
 - 新增雙推流模式架構說明（Agora + SRS）
 - 新增直播間管理邏輯（用戶限制、狀態管理、關閉機制）
 - 新增 WebSocket 事件系統
+- 新增遊戲服務架構說明（透過聊天室參與遊戲，外部團隊提供遊戲服務）
+- **遊戲服務獨立主理**：遊戲服務作為專案主要組件，獨立規劃與開發
 
