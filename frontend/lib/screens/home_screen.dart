@@ -239,14 +239,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                   backgroundColor: Colors.grey,
                                 ),
                           onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => PlayerScreen(
-                                    user: widget.user,
-                                    room: room,
-                                  ),
-                                ),
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PlayerScreen(
+                                user: widget.user,
+                                room: room,
                               ),
+                            ),
+                          ),
                         ),
                       );
                     },

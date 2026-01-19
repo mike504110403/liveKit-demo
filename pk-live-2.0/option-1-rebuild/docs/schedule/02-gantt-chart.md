@@ -83,45 +83,6 @@ gantt
 
 ---
 
-## 人力資源投入時間表
-
-```mermaid
-gantt
-    title 選項1人力資源投入峰值20到26人
-    dateFormat YYYY-MM-DD
-    
-    section PHP分析團隊
-    資深PHP工程師1到2人         :php1, 2026-01-29, 8w
-    
-    section Go後端團隊
-    TechLead1人                 :go1, 2026-01-29, 26w
-    Go工程師6人                 :go2, 2026-02-12, 24w
-    
-    section 遊戲服務團隊
-    遊戲TechLead1人             :game1, 2026-02-12, 24w
-    遊戲後端2到3人              :game2, 2026-02-19, 23w
-    Unity工程師2人              :game3, 2026-02-19, 23w
-    
-    section 客戶端團隊
-    iOSTeamLead1人              :ios1, 2026-02-12, 24w
-    iOS工程師0到1人             :ios2, 2026-02-19, 23w
-    AndroidTeamLead1人          :android1, 2026-02-12, 24w
-    Android工程師0到1人         :android2, 2026-02-19, 23w
-    
-    section 基礎設施團隊
-    DevOpsLead1人               :devops1, 2026-01-29, 26w
-    DevOps工程師1到2人          :devops2, 2026-02-12, 24w
-    QALead1人                   :qa1, 2026-02-19, 23w
-    QA工程師0到1人              :qa2, 2026-03-05, 20w
-    
-    section 設計與管理
-    UIUX設計師1到2人            :design1, 2026-02-19, 23w
-    專案經理1人                 :pm1, 2026-01-01, 30w
-    產品經理0到1人              :pm2, 2026-02-12, 24w
-```
-
----
-
 ## 並行開發示意圖
 
 ```mermaid
